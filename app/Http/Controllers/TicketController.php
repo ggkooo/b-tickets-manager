@@ -33,6 +33,14 @@ class TicketController extends Controller
     public function completed()
     {
         $tickets = Ticket::where('completed', true)
+            ->where(function ($query) {
+                $query->whereDate('completed_at', Carbon::today())
+                    ->orWhere(function ($fallback) {
+                        $fallback->whereNull('completed_at')
+                            ->whereDate('updated_at', Carbon::today());
+                    });
+            })
+            ->orderBy('completed_at', 'desc')
             ->orderBy('updated_at', 'desc')
             ->get();
 
@@ -96,7 +104,10 @@ class TicketController extends Controller
     public function complete($id)
     {
         $ticket = $this->resolveTicket($id);
-        $ticket->update(['completed' => true]);
+        $ticket->update([
+            'completed' => true,
+            'completed_at' => Carbon::now(),
+        ]);
 
         return response()->json($ticket);
     }

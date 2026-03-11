@@ -12,10 +12,12 @@ class Ticket extends Model
         'completed',
         'guiche',
         'called_at',
+        'completed_at',
     ];
 
     protected $casts = [
         'completed'  => 'boolean',
         'called_at'  => 'datetime',
+        'completed_at' => 'datetime',
     ];
 }
