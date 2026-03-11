@@ -11,6 +11,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/tickets', [TicketController::class, 'index']);
 Route::post('/tickets', [TicketController::class, 'store']);
 Route::patch('/tickets/{id}/complete', [TicketController::class, 'complete']);
+Route::get('/tickets/completed', [TicketController::class, 'completed']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tickets/{id}/call', [TicketController::class, 'call']);

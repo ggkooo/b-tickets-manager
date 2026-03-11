@@ -30,6 +30,15 @@ class TicketController extends Controller
         return response()->json($tickets);
     }
 
+    public function completed()
+    {
+        $tickets = Ticket::where('completed', true)
+            ->orderBy('updated_at', 'desc')
+            ->get();
+
+        return response()->json($tickets);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
