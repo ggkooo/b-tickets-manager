@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\VideoController;
+use App\Http\Controllers\ReportController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -18,6 +19,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::get('/tickets/recently-called', [TicketController::class, 'recentlyCalled']);
+Route::get('/reports/attendances', [ReportController::class, 'attendances']);
 
 Route::post('/videos/upload', [VideoController::class, 'upload']);
 Route::get('/videos/{filename}', [VideoController::class, 'show']);
