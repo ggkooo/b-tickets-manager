@@ -93,7 +93,7 @@ Important: change this password immediately in production.
 
 ### Ticket fields used by API
 - `id` (int)
-- `key` (string, unique, e.g. `P-AB12`)
+- `key` (string, unique, e.g. `P-0001`)
 - `service_type` (string)
 - `completed` (boolean)
 - `guiche` (nullable string)

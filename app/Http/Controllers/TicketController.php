@@ -4,8 +4,14 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Ticket;
-use Illuminate\Support\Str;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Database\QueryException;
+use Mike42\Escpos\CapabilityProfile;
+use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
+use Mike42\Escpos\Printer;
+use RuntimeException;
+use Throwable;
 
 class TicketController extends Controller
 {
@@ -62,19 +68,59 @@ class TicketController extends Controller
             'Recebimento de Amostras'  => 'R',
         };
 
-        // Generate a unique key: prefix + 4 random alphanumeric chars (uppercase)
-        do {
-            $suffix = strtoupper(Str::random(4));
-            $key = "{$prefix}-{$suffix}";
-        } while (Ticket::where('key', $key)->exists());
+        $ticket = null;
+        $attempts = 0;
 
-        $ticket = Ticket::create([
-            'key'          => $key,
-            'service_type' => $type,
-            'completed'    => false,
-        ]);
+        while ($ticket === null && $attempts < 5) {
+            $attempts++;
+            $sequence = $this->nextDailySequenceForPrefix($prefix);
+            $key = sprintf('%s-%04d', $prefix, $sequence);
 
-        return response()->json($ticket, 201);
+            try {
+                $ticket = Ticket::create([
+                    'key'          => $key,
+                    'service_type' => $type,
+                    'completed'    => false,
+                ]);
+            } catch (QueryException $e) {
+                // In case of concurrent requests, retry with the next available number.
+                if ((string) $e->getCode() !== '23000') {
+                    throw $e;
+                }
+            }
+        }
+
+        if ($ticket === null) {
+            return response()->json([
+                'message' => 'Nao foi possivel gerar a senha. Tente novamente.',
+            ], 500);
+        }
+
+        try {
+            $this->printTicket($ticket);
+
+            return response()->json([
+                'ticket' => $ticket,
+                'print' => [
+                    'status' => 'sucesso',
+                ],
+            ], 201);
+        } catch (Throwable $e) {
+            Log::error('Ticket criado, mas falhou na impressao automatica.', [
+                'ticket_id' => $ticket->id,
+                'ticket_key' => $ticket->key,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'ticket' => $ticket,
+                'print' => [
+                    'status' => 'erro',
+                    'message' => 'Ticket gerado, mas nao foi possivel imprimir automaticamente.',
+                    'error' => $e->getMessage(),
+                ],
+            ], 201);
+        }
     }
 
     /**
@@ -119,5 +165,90 @@ class TicketController extends Controller
         return is_numeric($identifier)
             ? Ticket::findOrFail($identifier)
             : Ticket::where('key', $identifier)->firstOrFail();
+    }
+
+    /**
+     * Send one ticket to the configured network printer.
+     */
+    private function printTicket(Ticket $ticket): void
+    {
+        if (!config('services.ticket_printer.enabled', false)) {
+            throw new RuntimeException('Impressao desativada. Ative TICKET_PRINTER_ENABLED=true no .env.');
+        }
+
+        $connectorName = config('services.ticket_printer.connector');
+
+        if (!$connectorName) {
+            throw new RuntimeException('Conector da impressora nao configurado em TICKET_PRINTER_CONNECTOR.');
+        }
+
+        $profileName = config('services.ticket_printer.profile', 'simple');
+        $header = config('services.ticket_printer.header', 'SENHA DE ATENDIMENTO');
+        $printedAt = now(config('app.timezone'))->format('d/m/Y H:i:s');
+
+        $profile = CapabilityProfile::load($profileName);
+        $connector = new WindowsPrintConnector($connectorName);
+        $printer = new Printer($connector, $profile);
+
+        try {
+            $printer->initialize();
+            $printer->setJustification(Printer::JUSTIFY_CENTER);
+
+            $printer->text("================================\n");
+            $printer->setEmphasis(true);
+            $printer->text($header . "\n");
+            $printer->setEmphasis(false);
+            $printer->text("================================\n");
+
+            $printer->feed();
+            $printer->selectPrintMode(Printer::MODE_DOUBLE_WIDTH);
+            $printer->text("SENHA\n");
+            $printer->selectPrintMode();
+
+            $printer->setTextSize(4, 4);
+            $printer->text($ticket->key . "\n");
+            $printer->setTextSize(1, 1);
+
+            $printer->feed();
+
+            $printer->text("TIPO DE ATENDIMENTO\n");
+            $printer->setEmphasis(true);
+            $printer->text($ticket->service_type . "\n");
+            $printer->setEmphasis(false);
+
+            $printer->text("Data/Hora: " . $printedAt . "\n");
+            $printer->text("--------------------------------\n");
+
+            $printer->text("Por favor, aguarde sua vez.\n");
+            $printer->feed(2);
+
+            $printer->cut();
+        } finally {
+            $printer->close();
+        }
+    }
+
+    /**
+     * Get next daily sequence for one prefix (N, P, E, R).
+     */
+    private function nextDailySequenceForPrefix(string $prefix): int
+    {
+        $start = Carbon::today();
+        $end = Carbon::today()->endOfDay();
+        $pattern = '/^' . preg_quote($prefix, '/') . '-(\d+)$/';
+
+        $maxSequence = Ticket::whereBetween('created_at', [$start, $end])
+            ->pluck('key')
+            ->map(function (string $key) use ($pattern): ?int {
+                if (!preg_match($pattern, $key, $matches)) {
+                    return null;
+                }
+
+                return (int) $matches[1];
+            })
+            ->filter(fn (?int $sequence) => $sequence !== null)
+            ->max();
+
+        return ($maxSequence ?? 0) + 1;
     }
 }

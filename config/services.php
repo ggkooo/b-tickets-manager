@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'ticket_printer' => [
+        'enabled' => env('TICKET_PRINTER_ENABLED', false),
+        'connector' => env('TICKET_PRINTER_CONNECTOR'),
+        'profile' => env('TICKET_PRINTER_PROFILE', 'simple'),
+        'header' => env('TICKET_PRINTER_HEADER', 'SENHA DE ATENDIMENTO'),
+    ],
+
 ];
