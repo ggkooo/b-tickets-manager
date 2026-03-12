@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class ApiKeyMiddleware
+class EnsureUserIsAdmin
 {
     /**
      * Handle an incoming request.
@@ -15,13 +15,12 @@ class ApiKeyMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $apiKey = $request->header('X-API-KEY');
-        $expectedApiKey = config('app.api_key');
+        $user = $request->user();
 
-        if (!$apiKey || !$expectedApiKey || $apiKey !== $expectedApiKey) {
+        if (!$user || !$user->is_admin) {
             return response()->json([
-                'message' => 'Unauthorized: Invalid or missing API Key'
-            ], 401);
+                'message' => 'Forbidden: administrator access required',
+            ], 403);
         }
 
         return $next($request);

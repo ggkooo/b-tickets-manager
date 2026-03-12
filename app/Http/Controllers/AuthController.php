@@ -20,12 +20,14 @@ class AuthController extends Controller
      */
     public function register(RegisterRequest $request)
     {
+        $validated = $request->validated();
 
         $user = User::create([
             'uuid' => Str::uuid(),
-            'name' => $request->name,
-            'login' => $request->login,
-            'password' => Hash::make($request->password),
+            'name' => $validated['name'],
+            'login' => $validated['login'],
+            'password' => Hash::make($validated['password']),
+            'is_admin' => false,
         ]);
 
         return response()->json([
@@ -45,14 +47,16 @@ class AuthController extends Controller
      */
     public function login(LoginRequest $request)
     {
-        if (!Auth::attempt($request->only('login', 'password'))) {
+        $credentials = $request->validated();
+
+        if (!Auth::attempt($credentials)) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Invalid credentials'
             ], 401);
         }
 
-        $user = User::where('login', $request->login)->firstOrFail();
+        $user = User::where('login', $credentials['login'])->firstOrFail();
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -61,7 +65,7 @@ class AuthController extends Controller
             'data' => [
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user
+                'user' => $user->only(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at'])
             ]
         ]);
     }
