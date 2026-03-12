@@ -54,4 +54,19 @@ class VideoController extends Controller
             ->values();
         return response()->json($videos);
     }
+
+    public function destroy(string $filename)
+    {
+        $path = 'videos/' . $filename;
+
+        if (!Storage::disk('public')->exists($path)) {
+            return response()->json(['message' => 'Video not found'], 404);
+        }
+
+        Storage::disk('public')->delete($path);
+
+        return response()->json([
+            'message' => 'Video deleted successfully',
+        ]);
+    }
 }

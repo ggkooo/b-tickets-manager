@@ -18,9 +18,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tickets/{id}/call', [TicketController::class, 'call']);
 });
 
-Route::get('/tickets/recently-called', [TicketController::class, 'recentlyCalled']);
-Route::get('/reports/attendances', [ReportController::class, 'attendances']);
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::get('/reports/attendances', [ReportController::class, 'attendances']);
+    Route::post('/videos/upload', [VideoController::class, 'upload']);
+    Route::delete('/videos/{filename}', [VideoController::class, 'destroy']);
+});
 
-Route::post('/videos/upload', [VideoController::class, 'upload']);
+Route::get('/tickets/recently-called', [TicketController::class, 'recentlyCalled']);
 Route::get('/videos/{filename}', [VideoController::class, 'show']);
 Route::get('/videos', [VideoController::class, 'index']);
