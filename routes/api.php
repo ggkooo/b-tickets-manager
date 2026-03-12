@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\VideoController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\UserController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -22,6 +23,11 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
     Route::get('/reports/attendances', [ReportController::class, 'attendances']);
     Route::post('/videos/upload', [VideoController::class, 'upload']);
     Route::delete('/videos/{filename}', [VideoController::class, 'destroy']);
+    Route::get('/users', [UserController::class, 'index']);
+    Route::patch('/users/{user}', [UserController::class, 'update']);
+    Route::delete('/users/{user}', [UserController::class, 'destroy']);
+    Route::patch('/users/{user}/make-admin', [UserController::class, 'makeAdmin']);
+    Route::patch('/users/{user}/remove-admin', [UserController::class, 'removeAdmin']);
 });
 
 Route::get('/tickets/recently-called', [TicketController::class, 'recentlyCalled']);
