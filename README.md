@@ -1,149 +1,195 @@
 # B-Unilab API
 
-Backend REST API for the Unilab totem system. Built with **Laravel 11** and secured with **Laravel Sanctum** for token-based authentication and an **X-API-KEY** header for global API access control.
+REST API for the Unilab totem/attendance system.
 
----
+Stack:
+- Laravel 12
+- Laravel Sanctum (token auth)
+- Global API Key middleware (`X-API-KEY`)
 
 ## Table of Contents
-
-- [Requirements](#requirements)
-- [Setup](#setup)
-- [Authentication Overview](#authentication-overview)
-- [Endpoints](#endpoints)
-  - [Auth](#auth)
-  - [Tickets](#tickets)
-
----
+- Requirements
+- Setup
+- Security Model
+- Default Admin Account
+- Data Models
+- Endpoints
+- Error Reference
+- Operational Notes
 
 ## Requirements
-
 - PHP 8.2+
 - Composer
-- SQLite (default) or any Laravel-supported database
-
----
+- Database supported by Laravel (SQLite, MySQL, PostgreSQL, etc.)
 
 ## Setup
-
 ```bash
-# 1. Install dependencies
+# Install dependencies
 composer install
 
-# 2. Copy environment file and generate app key
+# Create env file
 cp .env.example .env
+
+# Generate app key
 php artisan key:generate
 
-# 3. Run migrations
+# Configure database and APP_API_KEY in .env, then run migrations
 php artisan migrate
 
-# 4. Start the development server
+# Optional but recommended for video URL serving
+php artisan storage:link
+
+# Start API
 php artisan serve
 ```
 
-> The API will be available at `http://localhost:8000/api`.
+Base URL (local):
+`http://localhost:8000/api`
 
----
+## Security Model
 
-## Authentication Overview
+All API routes require:
+- `X-API-KEY` header
 
-The API uses **two layers of security**:
+Some routes also require:
+- `Authorization: Bearer <sanctum_token>`
 
-### 1. X-API-KEY (Global)
-Every request must include the API key in the header:
+Admin routes require:
+- Valid Sanctum token
+- Authenticated user with `is_admin = true`
 
-```
-X-API-KEY: <your_api_key>
-```
-
-The key is defined in your `.env` file as `API_KEY`.
-
-### 2. Bearer Token (Sanctum)
-Some routes require a logged-in user. After a successful login, include the returned token in the `Authorization` header:
-
-```
-Authorization: Bearer <token>
-```
-
----
-
-## Endpoints
-
-### Auth
-
-#### `POST /api/register`
-Register a new user.
-
-**Headers:**
-```
-X-API-KEY: <your_api_key>
+### Required headers
+```http
+X-API-KEY: <APP_API_KEY>
+Accept: application/json
 Content-Type: application/json
 ```
 
-**Request Body:**
+For authenticated routes:
+```http
+Authorization: Bearer <token>
+```
+
+## Default Admin Account
+
+After running migrations, the API guarantees a default admin account:
+- `login`: `admin`
+- `password`: `admin`
+- `is_admin`: `true`
+
+Important: change this password immediately in production.
+
+## Data Models
+
+### User fields used by API
+- `id` (int)
+- `uuid` (uuid)
+- `name` (string)
+- `login` (string, unique)
+- `password` (hashed)
+- `active` (boolean)
+- `is_admin` (boolean)
+- `created_at`, `updated_at` (timestamp)
+
+### Ticket fields used by API
+- `id` (int)
+- `key` (string, unique, e.g. `P-AB12`)
+- `service_type` (string)
+- `completed` (boolean)
+- `guiche` (nullable string)
+- `called_at` (nullable timestamp)
+- `completed_at` (nullable timestamp)
+- `created_at`, `updated_at` (timestamp)
+
+## Endpoints
+
+Legend:
+- Public: requires only `X-API-KEY`
+- Auth: requires `X-API-KEY` + Bearer token
+- Admin: requires `X-API-KEY` + Bearer token + admin user
+
+### Auth
+
+#### POST `/api/register` (Public)
+Create a non-admin user.
+
+Request body:
 ```json
 {
-  "name": "João Silva",
-  "login": "joao.silva",
+  "name": "Maria Silva",
+  "login": "maria.silva",
   "password": "secret123",
   "password_confirmation": "secret123"
 }
 ```
 
-**Response `201 Created`:**
+Validation:
+- `name`: required, string, max 255
+- `login`: required, string, max 100, unique in users
+- `password`: required, string, min 8, confirmed
+
+Success response `201`:
 ```json
 {
   "status": "success",
   "message": "User registered successfully",
   "data": {
     "user": {
-      "id": 1,
-      "uuid": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "João Silva",
-      "login": "joao.silva",
-      "created_at": "2026-03-11T13:00:00.000000Z",
-      "updated_at": "2026-03-11T13:00:00.000000Z"
+      "id": 10,
+      "uuid": "dd43f5c8-b370-4f67-9ec6-85ba77f86659",
+      "name": "Maria Silva",
+      "login": "maria.silva",
+      "active": true,
+      "is_admin": false,
+      "created_at": "2026-03-12T12:00:00.000000Z",
+      "updated_at": "2026-03-12T12:00:00.000000Z"
     }
   }
 }
 ```
 
----
+Common errors:
+- `422` validation error
+- `401` missing/invalid `X-API-KEY`
 
-#### `POST /api/login`
-Authenticate a user and obtain a Bearer token.
+#### POST `/api/login` (Public)
+Authenticate user and return Sanctum token.
 
-**Headers:**
-```
-X-API-KEY: <your_api_key>
-Content-Type: application/json
-```
-
-**Request Body:**
+Request body:
 ```json
 {
-  "login": "joao.silva",
+  "login": "maria.silva",
   "password": "secret123"
 }
 ```
 
-**Response `200 OK`:**
+Validation:
+- `login`: required, string, max 255
+- `password`: required, string
+
+Success response `200`:
 ```json
 {
   "status": "success",
   "message": "Login successful",
   "data": {
-    "access_token": "1|abcdefghijklmnopqrstuvwxyz123456",
+    "access_token": "1|token-value",
     "token_type": "Bearer",
     "user": {
-      "id": 1,
-      "name": "João Silva",
-      "login": "joao.silva"
+      "id": 10,
+      "uuid": "dd43f5c8-b370-4f67-9ec6-85ba77f86659",
+      "name": "Maria Silva",
+      "login": "maria.silva",
+      "active": true,
+      "is_admin": false,
+      "created_at": "2026-03-12T12:00:00.000000Z",
+      "updated_at": "2026-03-12T12:00:00.000000Z"
     }
   }
 }
 ```
 
-**Response `401 Unauthorized`** (wrong credentials):
+Invalid credentials `401`:
 ```json
 {
   "status": "error",
@@ -151,249 +197,443 @@ Content-Type: application/json
 }
 ```
 
----
-
 ### Tickets
 
-Tickets represent attendance passwords (senhas de atendimento) generated for patients at the totem.
+Allowed `service_type` values:
+- `Atendimento Normal`
+- `Atendimento Preferencial`
+- `Entrega de Exames`
+- `Recebimento de Amostras`
 
-#### Ticket Object
+Generated key prefixes:
+- Normal: `N`
+- Preferencial: `P`
+- Entrega de Exames: `E`
+- Recebimento de Amostras: `R`
 
-| Field          | Type      | Description                                              |
-|----------------|-----------|----------------------------------------------------------|
-| `id`           | integer   | Auto-incremented primary key                            |
-| `key`          | string    | Unique ticket key, e.g. `N-A3K9`                        |
-| `service_type` | string    | Type of service (see options below)                     |
-| `completed`    | boolean   | Whether attendance has been completed (`false` default) |
-| `guiche`       | string    | Name of the attendant who called the ticket (nullable)  |
-| `called_at`    | timestamp | When the ticket was called to a counter (nullable)      |
-| `created_at`   | timestamp | When the ticket was generated (used as wait-time base)  |
+#### GET `/api/tickets` (Public)
+List pending tickets (`completed = false` and `called_at = null`), with priority tickets first.
 
-#### Key Format
-
-The ticket key is composed of a **prefix** + **4 random uppercase alphanumeric characters**:
-
-| Service Type                | Prefix | Example  |
-|-----------------------------|--------|----------|
-| Atendimento Normal          | `N`    | `N-B7XQ` |
-| Atendimento Preferencial    | `P`    | `P-A1K2` |
-| Entrega de Exames           | `E`    | `E-C9MZ` |
-| Recebimento de Amostras     | `R`    | `R-T4WP` |
-
----
-
-#### `GET /api/tickets`
-Returns all **pending** tickets — not yet completed and not yet called — ordered by priority:
-
-1. **Atendimento Preferencial** tickets first (oldest first within the group)
-2. All other types (oldest first within the group)
-
-**Headers:**
-```
-X-API-KEY: <your_api_key>
-```
-
-**Response `200 OK`:**
+Success response `200`:
 ```json
 [
   {
-    "id": 3,
-    "key": "P-A1K2",
+    "id": 1,
+    "key": "P-1A2B",
     "service_type": "Atendimento Preferencial",
     "completed": false,
     "guiche": null,
     "called_at": null,
-    "created_at": "2026-03-11T10:01:00.000000Z"
-  },
-  {
-    "id": 1,
-    "key": "N-B7XQ",
-    "service_type": "Atendimento Normal",
-    "completed": false,
-    "guiche": null,
-    "called_at": null,
-    "created_at": "2026-03-11T09:58:00.000000Z"
+    "completed_at": null,
+    "created_at": "2026-03-12T11:00:00.000000Z",
+    "updated_at": "2026-03-12T11:00:00.000000Z"
   }
 ]
 ```
 
----
+#### POST `/api/tickets` (Public)
+Create a ticket.
 
-#### `POST /api/tickets`
-Generate a new attendance ticket.
-
-**Headers:**
-```
-X-API-KEY: <your_api_key>
-Content-Type: application/json
-```
-
-**Request Body:**
+Request body:
 ```json
 {
   "service_type": "Atendimento Normal"
 }
 ```
 
-> **Valid values for `service_type`:**
-> - `Atendimento Normal`
-> - `Atendimento Preferencial`
-> - `Entrega de Exames`
-> - `Recebimento de Amostras`
-
-**Response `201 Created`:**
+Success response `201`:
 ```json
 {
-  "id": 5,
-  "key": "N-B7XQ",
+  "id": 2,
+  "key": "N-Z9X1",
   "service_type": "Atendimento Normal",
   "completed": false,
   "guiche": null,
   "called_at": null,
-  "created_at": "2026-03-11T10:05:00.000000Z",
-  "updated_at": "2026-03-11T10:05:00.000000Z"
+  "completed_at": null,
+  "created_at": "2026-03-12T11:05:00.000000Z",
+  "updated_at": "2026-03-12T11:05:00.000000Z"
 }
 ```
 
-**Response `422 Unprocessable Entity`** (invalid service type):
+Validation error `422` (example):
 ```json
 {
   "message": "The selected service_type is invalid.",
   "errors": {
-    "service_type": ["The selected service_type is invalid."]
+    "service_type": [
+      "The selected service_type is invalid."
+    ]
   }
 }
 ```
 
----
+#### POST `/api/tickets/{id}/call` (Auth)
+Call a ticket. `{id}` accepts numeric id or ticket key.
+`guiche` is automatically set from authenticated user name.
 
-#### `POST /api/tickets/{id}/call`
-Call a ticket to an attendance counter (guichê). The **guichê name is taken from the authenticated user** — no payload body needed.
-
-> 🔒 **Requires Bearer Token** (Sanctum authentication)
-
-**Headers:**
-```
-X-API-KEY: <your_api_key>
-Authorization: Bearer <token>
-```
-
-**URL Parameters:**
-- `{id}` — Can be the numeric `id` (e.g. `5`) **or** the ticket `key` (e.g. `N-B7XQ`)
-
-**Response `200 OK`:**
+Success response `200`:
 ```json
 {
-  "id": 5,
-  "key": "N-B7XQ",
+  "id": 2,
+  "key": "N-Z9X1",
   "service_type": "Atendimento Normal",
   "completed": false,
-  "guiche": "João Silva",
-  "called_at": "2026-03-11T10:10:00.000000Z",
-  "created_at": "2026-03-11T10:05:00.000000Z",
-  "updated_at": "2026-03-11T10:10:00.000000Z"
+  "guiche": "Guiche 01",
+  "called_at": "2026-03-12T11:10:00.000000Z",
+  "completed_at": null,
+  "created_at": "2026-03-12T11:05:00.000000Z",
+  "updated_at": "2026-03-12T11:10:00.000000Z"
 }
 ```
 
-**Response `401 Unauthorized`** (missing or invalid token):
+Already called `422`:
+```json
+{
+  "message": "Este ticket já foi chamado.",
+  "ticket": {
+    "id": 2,
+    "key": "N-Z9X1"
+  }
+}
+```
+
+#### PATCH `/api/tickets/{id}/complete` (Public)
+Mark ticket as completed. `{id}` accepts numeric id or ticket key.
+
+Success response `200`:
+```json
+{
+  "id": 2,
+  "key": "N-Z9X1",
+  "service_type": "Atendimento Normal",
+  "completed": true,
+  "guiche": "Guiche 01",
+  "called_at": "2026-03-12T11:10:00.000000Z",
+  "completed_at": "2026-03-12T11:18:00.000000Z",
+  "created_at": "2026-03-12T11:05:00.000000Z",
+  "updated_at": "2026-03-12T11:18:00.000000Z"
+}
+```
+
+#### GET `/api/tickets/completed` (Public)
+List tickets completed today (from `completed_at` or fallback `updated_at`).
+
+Success response `200`:
+```json
+[
+  {
+    "id": 2,
+    "key": "N-Z9X1",
+    "service_type": "Atendimento Normal",
+    "completed": true,
+    "guiche": "Guiche 01",
+    "called_at": "2026-03-12T11:10:00.000000Z",
+    "completed_at": "2026-03-12T11:18:00.000000Z",
+    "created_at": "2026-03-12T11:05:00.000000Z",
+    "updated_at": "2026-03-12T11:18:00.000000Z"
+  }
+]
+```
+
+#### GET `/api/tickets/recently-called` (Public)
+Return up to 5 most recently called tickets.
+
+Success response `200`:
+```json
+[
+  {
+    "id": 2,
+    "key": "N-Z9X1",
+    "service_type": "Atendimento Normal",
+    "completed": true,
+    "guiche": "Guiche 01",
+    "called_at": "2026-03-12T11:10:00.000000Z",
+    "completed_at": "2026-03-12T11:18:00.000000Z",
+    "created_at": "2026-03-12T11:05:00.000000Z",
+    "updated_at": "2026-03-12T11:18:00.000000Z"
+  }
+]
+```
+
+### Reports
+
+#### GET `/api/reports/attendances` (Admin)
+Generate attendance metrics for a date range. Uses both active tickets and archived tickets.
+
+Query params:
+- `start_date` (required, `Y-m-d`)
+- `end_date` (required, `Y-m-d`, must be `>= start_date`)
+
+Example:
+`/api/reports/attendances?start_date=2026-03-01&end_date=2026-03-12`
+
+Success response `200`:
+```json
+{
+  "period": {
+    "start_date": "2026-03-01",
+    "end_date": "2026-03-12",
+    "days": 12
+  },
+  "average_wait_time": {
+    "seconds": 325,
+    "formatted": "00:05:25"
+  },
+  "average_attendances_per_day": 48.25,
+  "attendances_per_day": {
+    "2026-03-10": 44,
+    "2026-03-11": 51
+  },
+  "attendances_by_type": {
+    "priority": 27,
+    "others": 552
+  },
+  "total_attendances": 579
+}
+```
+
+### Videos
+
+#### GET `/api/videos` (Public)
+List available videos.
+
+Success response `200`:
+```json
+[
+  {
+    "filename": "video_abcd1234efgh5678.mp4",
+    "url": "http://localhost:8000/storage/videos/video_abcd1234efgh5678.mp4"
+  }
+]
+```
+
+#### GET `/api/videos/{filename}` (Public)
+Stream a specific video file.
+
+Success response `200`:
+- Content-Type: `video/mp4`
+
+Not found `404`:
+```json
+{
+  "message": "Video not found"
+}
+```
+
+#### POST `/api/videos/upload` (Admin)
+Upload MP4 video to public storage.
+
+Request (multipart/form-data):
+- `video` (required, MIME `video/mp4`, max 51200 KB)
+
+Success response `201`:
+```json
+{
+  "message": "Video uploaded successfully",
+  "filename": "video_abcd1234efgh5678.mp4",
+  "url": "http://localhost:8000/storage/videos/video_abcd1234efgh5678.mp4"
+}
+```
+
+#### DELETE `/api/videos/{filename}` (Admin)
+Delete video from public storage.
+
+Success response `200`:
+```json
+{
+  "message": "Video deleted successfully"
+}
+```
+
+Not found `404`:
+```json
+{
+  "message": "Video not found"
+}
+```
+
+### User Management (Admin)
+
+All user management routes are admin-only.
+
+#### GET `/api/users`
+List users (sorted by name).
+
+Success response `200`:
+```json
+[
+  {
+    "id": 1,
+    "uuid": "dc7f5da5-4b94-48f9-b488-e124412a3447",
+    "name": "Administrador",
+    "login": "admin",
+    "active": true,
+    "is_admin": true,
+    "created_at": "2026-03-12T11:08:06.000000Z",
+    "updated_at": "2026-03-12T11:08:06.000000Z"
+  }
+]
+```
+
+#### PATCH `/api/users/{user}`
+Update user fields. Route parameter `{user}` is user id (route model binding).
+
+Request body (all fields optional):
+```json
+{
+  "name": "Guiche 02",
+  "login": "guiche_02",
+  "password": "newsecret123",
+  "password_confirmation": "newsecret123",
+  "active": true
+}
+```
+
+Validation:
+- `name`: sometimes, string, max 255
+- `login`: sometimes, string, max 100, unique except current user
+- `password`: sometimes, string, min 8, confirmed
+- `active`: sometimes, boolean
+
+Success response `200`:
+```json
+{
+  "message": "User updated successfully",
+  "user": {
+    "id": 2,
+    "uuid": "95ef5071-0399-483d-bec5-ed83f3acbeb6",
+    "name": "Guiche 02",
+    "login": "guiche_02",
+    "active": true,
+    "is_admin": false,
+    "created_at": "2026-03-12T11:11:42.000000Z",
+    "updated_at": "2026-03-12T11:26:00.000000Z"
+  }
+}
+```
+
+#### DELETE `/api/users/{user}`
+Delete user.
+
+Success response `200`:
+```json
+{
+  "message": "User deleted successfully"
+}
+```
+
+Business rule error `422` (cannot remove last admin):
+```json
+{
+  "message": "Cannot delete the last administrator"
+}
+```
+
+#### PATCH `/api/users/{user}/make-admin`
+Promote user to admin.
+
+Success response `200`:
+```json
+{
+  "message": "User promoted to administrator successfully",
+  "user": {
+    "id": 2,
+    "is_admin": true
+  }
+}
+```
+
+If already admin `200`:
+```json
+{
+  "message": "User is already an administrator",
+  "user": {
+    "id": 2,
+    "is_admin": true
+  }
+}
+```
+
+#### PATCH `/api/users/{user}/remove-admin`
+Remove admin role from user.
+
+Success response `200`:
+```json
+{
+  "message": "Administrator access removed successfully",
+  "user": {
+    "id": 2,
+    "is_admin": false
+  }
+}
+```
+
+If user is not admin `200`:
+```json
+{
+  "message": "User is not an administrator",
+  "user": {
+    "id": 2,
+    "is_admin": false
+  }
+}
+```
+
+Business rule error `422` (cannot demote last admin):
+```json
+{
+  "message": "Cannot remove administrator access from the last administrator"
+}
+```
+
+## Error Reference
+
+### `401 Unauthorized`
+- Missing/invalid `X-API-KEY`:
+```json
+{
+  "message": "Unauthorized: Invalid or missing API Key"
+}
+```
+- Missing/invalid Sanctum token on auth/admin routes:
 ```json
 {
   "message": "Unauthenticated."
 }
 ```
 
-**Response `404 Not Found`** (ticket does not exist):
+### `403 Forbidden`
+On admin routes when authenticated user is not admin:
 ```json
 {
-  "message": "No query results for model [App\\Models\\Ticket]."
+  "message": "Forbidden: administrator access required"
 }
 ```
 
-**Response `422 Unprocessable Entity`** (ticket already called):
+### `404 Not Found`
+- Missing resource (examples):
 ```json
 {
-  "message": "Este ticket já foi chamado.",
-  "ticket": { ... }
+  "message": "Video not found"
 }
 ```
 
----
-
-
-#### `GET /api/tickets/recently-called`
-Returns the **last 5 called tickets** (tickets that have already been called to a counter), in descending order of call time. Includes all ticket information, such as counter (guiche), call time, etc.
-
-**Headers:**
-```
-X-API-KEY: <your_api_key>
-```
-
-**Response `200 OK`:**
-```json
-[
-  {
-    "id": 8,
-    "key": "P-1A2B",
-    "service_type": "Atendimento Preferencial",
-    "completed": false,
-    "guiche": "João Silva",
-    "called_at": "2026-03-11T13:20:00.000000Z",
-    "created_at": "2026-03-11T13:10:00.000000Z",
-    "updated_at": "2026-03-11T13:20:00.000000Z"
-  },
-  {
-    "id": 7,
-    "key": "N-9Z8Y",
-    "service_type": "Atendimento Normal",
-    "completed": false,
-    "guiche": "Maria Souza",
-    "called_at": "2026-03-11T13:18:00.000000Z",
-    "created_at": "2026-03-11T13:05:00.000000Z",
-    "updated_at": "2026-03-11T13:18:00.000000Z"
-  }
-  // ...up to 5 tickets
-]
-```
-
----
-Mark a ticket as completed after attendance is finished.
-
-**Headers:**
-```
-X-API-KEY: <your_api_key>
-```
-
-**URL Parameters:**
-- `{id}` — Can be the numeric `id` or the ticket `key`
-
-**Response `200 OK`:**
+### `422 Unprocessable Entity`
+- Validation errors (Laravel default format)
+- Business rules (examples):
 ```json
 {
-  "id": 5,
-  "key": "N-B7XQ",
-  "service_type": "Atendimento Normal",
-  "completed": true,
-  "guiche": "João Silva",
-  "called_at": "2026-03-11T10:10:00.000000Z",
-  "created_at": "2026-03-11T10:05:00.000000Z",
-  "updated_at": "2026-03-11T10:15:00.000000Z"
+  "message": "Cannot delete the last administrator"
 }
 ```
 
----
+## Operational Notes
 
-## Typical Ticket Lifecycle
-
-```
-[Totem] POST /tickets           → Ticket generated (N-B7XQ)
-           ↓
-[Counter] POST /tickets/N-B7XQ/call  → Ticket called (guiche = "João Silva")
-           ↓
-[Counter] PATCH /tickets/N-B7XQ/complete → Attendance completed
-```
-
----
+- Completed tickets from previous days are archived daily at `00:05` by the scheduled command `tickets:archive-completed`.
+- Attendance reports merge data from current tickets and archived tickets.
+- API errors are always rendered as JSON for `/api/*` routes.
 
 ## License
 
-Proprietary — Unilab.
+Proprietary - Unilab.
