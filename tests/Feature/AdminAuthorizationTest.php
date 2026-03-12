@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class AdminAuthorizationTest extends TestCase
@@ -24,6 +25,16 @@ class AdminAuthorizationTest extends TestCase
 
         config()->set('app.api_key', 'test-api-key');
         putenv('APP_API_KEY=test-api-key');
+    }
+
+    public function test_migrations_create_a_default_admin_account(): void
+    {
+        $user = User::where('login', 'admin')->first();
+
+        $this->assertNotNull($user);
+        $this->assertTrue($user->is_admin);
+        $this->assertTrue($user->active);
+        $this->assertTrue(Hash::check('admin', $user->password));
     }
 
     public function test_login_returns_admin_flag_for_admin_user(): void
