@@ -79,6 +79,18 @@ class AdminAuthorizationTest extends TestCase
             ]);
     }
 
+    public function test_admin_report_route_requires_authentication_and_returns_401_json(): void
+    {
+        $response = $this->withHeaders($this->apiHeaders())
+            ->getJson('/api/reports/attendances?start_date=2026-03-01&end_date=2026-03-12');
+
+        $response
+            ->assertUnauthorized()
+            ->assertJson([
+                'message' => 'Unauthenticated.',
+            ]);
+    }
+
     public function test_admin_user_can_access_admin_report_route(): void
     {
         $user = User::factory()->admin()->create();
