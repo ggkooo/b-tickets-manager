@@ -30,6 +30,8 @@ Artisan::command('tickets:archive-completed', function () {
             $ids = [];
 
             foreach ($tickets as $ticket) {
+                $completionType = $ticket->completion_type === 'canceled' ? 'canceled' : 'completed';
+
                 $rows[] = [
                     'ticket_id' => $ticket->id,
                     'key' => $ticket->key,
@@ -37,7 +39,7 @@ Artisan::command('tickets:archive-completed', function () {
                     'guiche' => $ticket->guiche,
                     'called_at' => $ticket->called_at,
                     'completed_at' => $ticket->completed_at ?? $ticket->updated_at,
-                    'completion_type' => $ticket->completion_type,
+                    'completion_type' => $completionType,
                     'ticket_created_at' => $ticket->created_at,
                     'ticket_updated_at' => $ticket->updated_at,
                     'archived_at' => $now,
