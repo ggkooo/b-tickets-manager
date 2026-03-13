@@ -1,119 +1,126 @@
 # B-Unilab API
 
-REST API for the Unilab totem/attendance system.
+REST API for a queue/totem attendance system.
 
-Stack:
+## Tech Stack
+
 - Laravel 12
-- Laravel Sanctum (token auth)
-- Global API Key middleware (`X-API-KEY`)
-
-## Table of Contents
-- Requirements
-- Setup
-- Security Model
-- Default Admin Account
-- Data Models
-- Endpoints
-- Error Reference
-- Operational Notes
+- Laravel Sanctum (Bearer token authentication)
+- Global API key middleware (`X-API-KEY`) for all `/api/*` routes
 
 ## Requirements
+
 - PHP 8.2+
 - Composer
-- Database supported by Laravel (SQLite, MySQL, PostgreSQL, etc.)
+- A Laravel-supported database (SQLite, MySQL, PostgreSQL, etc.)
 
 ## Setup
+
 ```bash
-# Install dependencies
 composer install
-
-# Create env file
 cp .env.example .env
-
-# Generate app key
 php artisan key:generate
 
-# Configure database and APP_API_KEY in .env, then run migrations
+# Configure DB and APP_API_KEY in .env
 php artisan migrate
 
-# Optional but recommended for video URL serving
+# Optional, but recommended for video public URLs
 php artisan storage:link
 
-# Start API
 php artisan serve
 ```
 
-Base URL (local):
-`http://localhost:8000/api`
+Local base URL:
 
-## Security Model
+```text
+http://localhost:8000/api
+```
 
-All API routes require:
-- `X-API-KEY` header
+## Authentication and Authorization
 
-Some routes also require:
-- `Authorization: Bearer <sanctum_token>`
+Every API request must include:
 
-Admin routes require:
-- Valid Sanctum token
-- Authenticated user with `is_admin = true`
-
-### Required headers
 ```http
 X-API-KEY: <APP_API_KEY>
 Accept: application/json
-Content-Type: application/json
 ```
 
-For authenticated routes:
+For authenticated routes, also include:
+
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <sanctum_token>
 ```
 
-## Default Admin Account
+Access levels:
 
-After running migrations, the API guarantees a default admin account:
+- Public: requires only `X-API-KEY`
+- Auth: requires `X-API-KEY` and a valid Bearer token
+- Admin: requires `X-API-KEY`, valid Bearer token, and `is_admin = true`
+
+## Default Admin User
+
+After migrations, the project ensures a default admin user:
+
 - `login`: `admin`
 - `password`: `admin`
 - `is_admin`: `true`
 
-Important: change this password immediately in production.
+Change this password immediately in production.
 
-## Data Models
+## Ticket Business Rules
 
-### User fields used by API
-- `id` (int)
-- `uuid` (uuid)
-- `name` (string)
-- `login` (string, unique)
-- `password` (hashed)
-- `active` (boolean)
-- `is_admin` (boolean)
-- `created_at`, `updated_at` (timestamp)
+Allowed `service_type` values:
 
-### Ticket fields used by API
-- `id` (int)
-- `key` (string, unique, e.g. `P-0001`)
-- `service_type` (string)
-- `completed` (boolean)
-- `guiche` (nullable string)
-- `called_at` (nullable timestamp)
-- `completed_at` (nullable timestamp)
-- `created_at`, `updated_at` (timestamp)
+- `Atendimento Normal`
+- `Atendimento Preferencial`
+- `Recebimento de Exames ou Entrega de Amostras`
 
-## Endpoints
+Generated ticket key prefix by service type:
 
-Legend:
-- Public: requires only `X-API-KEY`
-- Auth: requires `X-API-KEY` + Bearer token
-- Admin: requires `X-API-KEY` + Bearer token + admin user
+- `N` for `Atendimento Normal`
+- `P` for `Atendimento Preferencial`
+- `E` for `Recebimento de Exames ou Entrega de Amostras`
 
-### Auth
+Outcome types used by reports:
+
+- `completed`
+- `canceled`
+
+## Endpoint Summary
+
+| Method | Path | Access |
+|---|---|---|
+| POST | `/api/register` | Public |
+| POST | `/api/login` | Public |
+| GET | `/api/tickets` | Public |
+| POST | `/api/tickets` | Public |
+| GET | `/api/tickets/recently-called` | Public |
+| GET | `/api/videos` | Public |
+| GET | `/api/videos/{filename}` | Public |
+| POST | `/api/tickets/{id}/call` | Auth |
+| POST | `/api/tickets/{id}/recall` | Auth |
+| PATCH | `/api/tickets/{id}/complete` | Auth |
+| PATCH | `/api/tickets/{id}/cancel` | Auth |
+| GET | `/api/tickets/completed` | Auth |
+| GET | `/api/reports/attendances` | Admin |
+| POST | `/api/videos/upload` | Admin |
+| DELETE | `/api/videos/{filename}` | Admin |
+| GET | `/api/users` | Admin |
+| PATCH | `/api/users/{user}` | Admin |
+| DELETE | `/api/users/{user}` | Admin |
+| PATCH | `/api/users/{user}/make-admin` | Admin |
+| PATCH | `/api/users/{user}/remove-admin` | Admin |
+
+## Detailed Endpoints
+
+### 1) Auth
 
 #### POST `/api/register` (Public)
-Create a non-admin user.
+
+Creates a non-admin user.
 
 Request body:
+
 ```json
 {
   "name": "Maria Silva",
@@ -123,12 +130,14 @@ Request body:
 }
 ```
 
-Validation:
+Validation rules:
+
 - `name`: required, string, max 255
-- `login`: required, string, max 100, unique in users
+- `login`: required, string, max 100, unique in `users.login`
 - `password`: required, string, min 8, confirmed
 
-Success response `201`:
+Success `201`:
+
 ```json
 {
   "status": "success",
@@ -141,21 +150,19 @@ Success response `201`:
       "login": "maria.silva",
       "active": true,
       "is_admin": false,
-      "created_at": "2026-03-12T12:00:00.000000Z",
-      "updated_at": "2026-03-12T12:00:00.000000Z"
+      "created_at": "2026-03-13T12:00:00.000000Z",
+      "updated_at": "2026-03-13T12:00:00.000000Z"
     }
   }
 }
 ```
 
-Common errors:
-- `422` validation error
-- `401` missing/invalid `X-API-KEY`
-
 #### POST `/api/login` (Public)
-Authenticate user and return Sanctum token.
+
+Authenticates user and returns a Sanctum token.
 
 Request body:
+
 ```json
 {
   "login": "maria.silva",
@@ -163,11 +170,13 @@ Request body:
 }
 ```
 
-Validation:
+Validation rules:
+
 - `login`: required, string, max 255
 - `password`: required, string
 
-Success response `200`:
+Success `200`:
+
 ```json
 {
   "status": "success",
@@ -182,14 +191,15 @@ Success response `200`:
       "login": "maria.silva",
       "active": true,
       "is_admin": false,
-      "created_at": "2026-03-12T12:00:00.000000Z",
-      "updated_at": "2026-03-12T12:00:00.000000Z"
+      "created_at": "2026-03-13T12:00:00.000000Z",
+      "updated_at": "2026-03-13T12:00:00.000000Z"
     }
   }
 }
 ```
 
 Invalid credentials `401`:
+
 ```json
 {
   "status": "error",
@@ -197,64 +207,90 @@ Invalid credentials `401`:
 }
 ```
 
-### Tickets
+### 2) Tickets
 
-Allowed `service_type` values:
-- `Atendimento Normal`
-- `Atendimento Preferencial`
-- `Recebimento de Exames ou Entrega de Amostras`
-
-Generated key prefixes:
-- Normal: `N`
-- Preferencial: `P`
-- Recebimento de Exames ou Entrega de Amostras: `E`
+Note: in `/api/tickets/{id}/...`, the `{id}` can be either numeric ticket ID or ticket key (for example `P-0001`).
 
 #### GET `/api/tickets` (Public)
-List pending tickets (`completed = false` and `called_at = null`), with priority tickets first.
 
-Success response `200`:
+Returns waiting tickets (`completed = false` and `called_at = null`).
+Priority service appears first.
+
+Success `200` example:
+
 ```json
 [
   {
     "id": 1,
-    "key": "P-1A2B",
+    "key": "P-0001",
     "service_type": "Atendimento Preferencial",
     "completed": false,
     "guiche": null,
     "called_at": null,
     "completed_at": null,
-    "created_at": "2026-03-12T11:00:00.000000Z",
-    "updated_at": "2026-03-12T11:00:00.000000Z"
+    "completion_type": null,
+    "created_at": "2026-03-13T10:00:00.000000Z",
+    "updated_at": "2026-03-13T10:00:00.000000Z"
   }
 ]
 ```
 
 #### POST `/api/tickets` (Public)
-Create a ticket.
+
+Creates a new ticket and tries to print it.
 
 Request body:
+
 ```json
 {
   "service_type": "Atendimento Normal"
 }
 ```
 
-Success response `201`:
+Validation rules:
+
+- `service_type`: required, string, one of the allowed service values
+
+Success `201`:
+
 ```json
 {
-  "id": 2,
-  "key": "N-Z9X1",
-  "service_type": "Atendimento Normal",
-  "completed": false,
-  "guiche": null,
-  "called_at": null,
-  "completed_at": null,
-  "created_at": "2026-03-12T11:05:00.000000Z",
-  "updated_at": "2026-03-12T11:05:00.000000Z"
+  "ticket": {
+    "id": 2,
+    "key": "N-0001",
+    "service_type": "Atendimento Normal",
+    "completed": false,
+    "guiche": null,
+    "called_at": null,
+    "completed_at": null,
+    "completion_type": null,
+    "created_at": "2026-03-13T10:05:00.000000Z",
+    "updated_at": "2026-03-13T10:05:00.000000Z"
+  },
+  "print": {
+    "status": "sucesso"
+  }
 }
 ```
 
-Validation error `422` (example):
+Success with print failure still returns `201`:
+
+```json
+{
+  "ticket": {
+    "id": 2,
+    "key": "N-0001"
+  },
+  "print": {
+    "status": "erro",
+    "message": "Ticket gerado, mas nao foi possivel imprimir automaticamente.",
+    "error": "..."
+  }
+}
+```
+
+Validation error `422` example:
+
 ```json
 {
   "message": "The selected service_type is invalid.",
@@ -267,163 +303,93 @@ Validation error `422` (example):
 ```
 
 #### POST `/api/tickets/{id}/call` (Auth)
-Call a ticket. `{id}` accepts numeric id or ticket key.
-`guiche` is automatically set from authenticated user name.
 
-Success response `200`:
-```json
-{
-  "id": 2,
-  "key": "N-Z9X1",
-  "service_type": "Atendimento Normal",
-  "completed": false,
-  "guiche": "Guiche 01",
-  "called_at": "2026-03-12T11:10:00.000000Z",
-  "completed_at": null,
-  "created_at": "2026-03-12T11:05:00.000000Z",
-  "updated_at": "2026-03-12T11:10:00.000000Z"
-}
-```
+Sets `called_at` to now and `guiche` from the authenticated user name.
 
-Already called `422`:
-```json
-{
-  "message": "Este ticket já foi chamado.",
-  "ticket": {
-    "id": 2,
-    "key": "N-Z9X1"
-  }
-}
-```
+Request body: none
+
+Success `200`: returns updated ticket.
+
+If already called, returns `422`.
 
 #### POST `/api/tickets/{id}/recall` (Auth)
-Recall a ticket that was already called. `{id}` accepts numeric id or ticket key.
-This updates `called_at` to the current time so the ticket can be announced again.
 
-Success response `200`:
-```json
-{
-  "id": 2,
-  "key": "N-Z9X1",
-  "service_type": "Atendimento Normal",
-  "completed": false,
-  "guiche": "Guiche 01",
-  "called_at": "2026-03-12T11:14:00.000000Z",
-  "completed_at": null,
-  "created_at": "2026-03-12T11:05:00.000000Z",
-  "updated_at": "2026-03-12T11:14:00.000000Z"
-}
-```
+Recalls a ticket by updating `called_at` to now and `guiche` from authenticated user.
 
-Validation `422` examples:
-```json
-{
-  "message": "Este ticket ainda nao foi chamado."
-}
-```
+Request body: none
 
-```json
-{
-  "message": "Este ticket ja foi finalizado."
-}
-```
+Success `200`: returns updated ticket.
 
-#### PATCH `/api/tickets/{id}/complete` (Public)
-Mark ticket as completed. `{id}` accepts numeric id or ticket key.
+Common `422` cases:
 
-Success response `200`:
-```json
-{
-  "id": 2,
-  "key": "N-Z9X1",
-  "service_type": "Atendimento Normal",
-  "completed": true,
-  "guiche": "Guiche 01",
-  "called_at": "2026-03-12T11:10:00.000000Z",
-  "completed_at": "2026-03-12T11:18:00.000000Z",
-  "created_at": "2026-03-12T11:05:00.000000Z",
-  "updated_at": "2026-03-12T11:18:00.000000Z"
-}
-```
+- Ticket has not been called yet
+- Ticket is already completed
 
-#### PATCH `/api/tickets/{id}/cancel` (Public)
-Mark ticket as canceled. `{id}` accepts numeric id or ticket key.
-This endpoint updates the same completion fields used by `/complete`.
+#### PATCH `/api/tickets/{id}/complete` (Auth)
 
-Success response `200`:
-```json
-{
-  "id": 2,
-  "key": "N-Z9X1",
-  "service_type": "Atendimento Normal",
-  "completed": true,
-  "guiche": "Guiche 01",
-  "called_at": "2026-03-12T11:10:00.000000Z",
-  "completed_at": "2026-03-12T11:20:00.000000Z",
-  "created_at": "2026-03-12T11:05:00.000000Z",
-  "updated_at": "2026-03-12T11:20:00.000000Z"
-}
-```
+Marks the ticket as completed.
 
-#### GET `/api/tickets/completed` (Public)
-List tickets completed today (from `completed_at` or fallback `updated_at`).
+Side effects:
 
-Success response `200`:
-```json
-[
-  {
-    "id": 2,
-    "key": "N-Z9X1",
-    "service_type": "Atendimento Normal",
-    "completed": true,
-    "guiche": "Guiche 01",
-    "called_at": "2026-03-12T11:10:00.000000Z",
-    "completed_at": "2026-03-12T11:18:00.000000Z",
-    "created_at": "2026-03-12T11:05:00.000000Z",
-    "updated_at": "2026-03-12T11:18:00.000000Z"
-  }
-]
-```
+- `completed = true`
+- `completed_at = now`
+- `completion_type = completed`
+
+Request body: none
+
+Success `200`: returns updated ticket.
+
+#### PATCH `/api/tickets/{id}/cancel` (Auth)
+
+Marks the ticket as canceled.
+
+Side effects:
+
+- `completed = true`
+- `completed_at = now`
+- `completion_type = canceled`
+
+Request body: none
+
+Success `200`: returns updated ticket.
+
+#### GET `/api/tickets/completed` (Auth)
+
+Returns tickets completed today. Uses `completed_at`, and falls back to `updated_at` when needed.
+
+Success `200`: array of tickets.
 
 #### GET `/api/tickets/recently-called` (Public)
-Return up to 5 most recently called tickets.
 
-Success response `200`:
-```json
-[
-  {
-    "id": 2,
-    "key": "N-Z9X1",
-    "service_type": "Atendimento Normal",
-    "completed": true,
-    "guiche": "Guiche 01",
-    "called_at": "2026-03-12T11:10:00.000000Z",
-    "completed_at": "2026-03-12T11:18:00.000000Z",
-    "created_at": "2026-03-12T11:05:00.000000Z",
-    "updated_at": "2026-03-12T11:18:00.000000Z"
-  }
-]
-```
+Returns up to 5 most recently called tickets.
 
-### Reports
+Success `200`: array of tickets.
+
+### 3) Reports
 
 #### GET `/api/reports/attendances` (Admin)
-Generate attendance metrics for a date range. Uses both active tickets and archived tickets.
+
+Returns attendance KPIs for a date range, combining active and archived data.
 
 Query params:
-- `start_date` (required, `Y-m-d`)
-- `end_date` (required, `Y-m-d`, must be `>= start_date`)
+
+- `start_date` required, format `Y-m-d`
+- `end_date` required, format `Y-m-d`, must be equal or after `start_date`
 
 Example:
-`/api/reports/attendances?start_date=2026-03-01&end_date=2026-03-12`
 
-Success response `200`:
+```text
+/api/reports/attendances?start_date=2026-03-01&end_date=2026-03-13
+```
+
+Success `200`:
+
 ```json
 {
   "period": {
     "start_date": "2026-03-01",
-    "end_date": "2026-03-12",
-    "days": 12
+    "end_date": "2026-03-13",
+    "days": 13
   },
   "average_wait_time": {
     "seconds": 325,
@@ -431,8 +397,8 @@ Success response `200`:
   },
   "average_attendances_per_day": 48.25,
   "attendances_per_day": {
-    "2026-03-10": 44,
-    "2026-03-11": 51
+    "2026-03-12": 44,
+    "2026-03-13": 51
   },
   "attendances_by_type": {
     "priority": 27,
@@ -447,12 +413,14 @@ Success response `200`:
 }
 ```
 
-### Videos
+### 4) Videos
 
 #### GET `/api/videos` (Public)
-List available videos.
 
-Success response `200`:
+Lists uploaded MP4 files.
+
+Success `200`:
+
 ```json
 [
   {
@@ -463,12 +431,11 @@ Success response `200`:
 ```
 
 #### GET `/api/videos/{filename}` (Public)
-Stream a specific video file.
 
-Success response `200`:
-- Content-Type: `video/mp4`
+Streams video file (`Content-Type: video/mp4`).
 
-Not found `404`:
+If file does not exist, returns `404`:
+
 ```json
 {
   "message": "Video not found"
@@ -476,12 +443,17 @@ Not found `404`:
 ```
 
 #### POST `/api/videos/upload` (Admin)
-Upload MP4 video to public storage.
 
-Request (multipart/form-data):
-- `video` (required, MIME `video/mp4`)
+Uploads an MP4 video.
 
-Success response `201`:
+Request type: `multipart/form-data`
+
+Fields:
+
+- `video`: required file, MIME must be `video/mp4`
+
+Success `201`:
+
 ```json
 {
   "message": "Video uploaded successfully",
@@ -491,191 +463,205 @@ Success response `201`:
 ```
 
 #### DELETE `/api/videos/{filename}` (Admin)
-Delete video from public storage.
 
-Success response `200`:
+Deletes a video by filename.
+
+Success `200`:
+
 ```json
 {
   "message": "Video deleted successfully"
 }
 ```
 
-Not found `404`:
+If file does not exist, returns `404`:
+
 ```json
 {
   "message": "Video not found"
 }
 ```
 
-### User Management (Admin)
+### 5) User Management (Admin)
 
-All user management routes are admin-only.
+#### GET `/api/users` (Admin)
 
-#### GET `/api/users`
-List users (sorted by name).
+Returns all users sorted by name.
 
-Success response `200`:
-```json
-[
-  {
-    "id": 1,
-    "uuid": "dc7f5da5-4b94-48f9-b488-e124412a3447",
-    "name": "Administrador",
-    "login": "admin",
-    "active": true,
-    "is_admin": true,
-    "created_at": "2026-03-12T11:08:06.000000Z",
-    "updated_at": "2026-03-12T11:08:06.000000Z"
-  }
-]
-```
+Success `200`: array of users with these fields:
 
-#### PATCH `/api/users/{user}`
-Update user fields. Route parameter `{user}` is user id (route model binding).
+- `id`
+- `uuid`
+- `name`
+- `login`
+- `active`
+- `is_admin`
+- `created_at`
+- `updated_at`
 
-Request body (all fields optional):
+#### PATCH `/api/users/{user}` (Admin)
+
+Updates one user. `{user}` is the user ID (route model binding).
+
+Request body (all optional):
+
 ```json
 {
-  "name": "Guiche 02",
-  "login": "guiche_02",
+  "name": "Desk 02",
+  "login": "desk_02",
   "password": "newsecret123",
   "password_confirmation": "newsecret123",
   "active": true
 }
 ```
 
-Validation:
+Validation rules:
+
 - `name`: sometimes, string, max 255
 - `login`: sometimes, string, max 100, unique except current user
 - `password`: sometimes, string, min 8, confirmed
 - `active`: sometimes, boolean
 
-Success response `200`:
+Success `200`:
+
 ```json
 {
   "message": "User updated successfully",
   "user": {
     "id": 2,
     "uuid": "95ef5071-0399-483d-bec5-ed83f3acbeb6",
-    "name": "Guiche 02",
-    "login": "guiche_02",
+    "name": "Desk 02",
+    "login": "desk_02",
     "active": true,
     "is_admin": false,
-    "created_at": "2026-03-12T11:11:42.000000Z",
-    "updated_at": "2026-03-12T11:26:00.000000Z"
+    "created_at": "2026-03-13T11:11:42.000000Z",
+    "updated_at": "2026-03-13T11:26:00.000000Z"
   }
 }
 ```
 
-#### DELETE `/api/users/{user}`
-Delete user.
+#### DELETE `/api/users/{user}` (Admin)
 
-Success response `200`:
+Deletes a user.
+
+Success `200`:
+
 ```json
 {
   "message": "User deleted successfully"
 }
 ```
 
-Business rule error `422` (cannot remove last admin):
+Business rule `422` when trying to delete the last admin:
+
 ```json
 {
   "message": "Cannot delete the last administrator"
 }
 ```
 
-#### PATCH `/api/users/{user}/make-admin`
-Promote user to admin.
+#### PATCH `/api/users/{user}/make-admin` (Admin)
 
-Success response `200`:
+Promotes user to admin.
+
+Success `200`:
+
 ```json
 {
   "message": "User promoted to administrator successfully",
   "user": {
     "id": 2,
-    "is_admin": true
+    "uuid": "95ef5071-0399-483d-bec5-ed83f3acbeb6",
+    "name": "Desk 02",
+    "login": "desk_02",
+    "active": true,
+    "is_admin": true,
+    "created_at": "2026-03-13T11:11:42.000000Z",
+    "updated_at": "2026-03-13T11:26:00.000000Z"
   }
 }
 ```
 
-If already admin `200`:
-```json
-{
-  "message": "User is already an administrator",
-  "user": {
-    "id": 2,
-    "is_admin": true
-  }
-}
-```
+If already admin, still returns `200` with current user data and message.
 
-#### PATCH `/api/users/{user}/remove-admin`
-Remove admin role from user.
+#### PATCH `/api/users/{user}/remove-admin` (Admin)
 
-Success response `200`:
+Removes admin role.
+
+Success `200`:
+
 ```json
 {
   "message": "Administrator access removed successfully",
   "user": {
     "id": 2,
-    "is_admin": false
+    "uuid": "95ef5071-0399-483d-bec5-ed83f3acbeb6",
+    "name": "Desk 02",
+    "login": "desk_02",
+    "active": true,
+    "is_admin": false,
+    "created_at": "2026-03-13T11:11:42.000000Z",
+    "updated_at": "2026-03-13T11:26:00.000000Z"
   }
 }
 ```
 
-If user is not admin `200`:
-```json
-{
-  "message": "User is not an administrator",
-  "user": {
-    "id": 2,
-    "is_admin": false
-  }
-}
-```
+If user is not admin, returns `200` with a message.
 
-Business rule error `422` (cannot demote last admin):
+Business rule `422` when trying to remove admin from the last admin user:
+
 ```json
 {
   "message": "Cannot remove administrator access from the last administrator"
 }
 ```
 
-## Error Reference
+## Common Error Responses
 
-### `401 Unauthorized`
-- Missing/invalid `X-API-KEY`:
+### 401 Unauthorized
+
+Missing or invalid API key:
+
 ```json
 {
   "message": "Unauthorized: Invalid or missing API Key"
 }
 ```
-- Missing/invalid Sanctum token on auth/admin routes:
+
+Missing or invalid Bearer token on Auth/Admin routes:
+
 ```json
 {
   "message": "Unauthenticated."
 }
 ```
 
-### `403 Forbidden`
-On admin routes when authenticated user is not admin:
+### 403 Forbidden
+
+Authenticated user is not admin on Admin routes:
+
 ```json
 {
   "message": "Forbidden: administrator access required"
 }
 ```
 
-### `404 Not Found`
-- Missing resource (examples):
+### 404 Not Found
+
+Example:
+
 ```json
 {
   "message": "Video not found"
 }
 ```
 
-### `422 Unprocessable Entity`
-- Validation errors (Laravel default format)
-- Business rules (examples):
+### 422 Unprocessable Entity
+
+Used for validation errors and business rule violations.
+
+Example:
+
 ```json
 {
   "message": "Cannot delete the last administrator"
@@ -684,9 +670,9 @@ On admin routes when authenticated user is not admin:
 
 ## Operational Notes
 
-- Completed tickets from previous days are archived daily at `00:05` by the scheduled command `tickets:archive-completed`.
-- Attendance reports merge data from current tickets and archived tickets.
-- API errors are always rendered as JSON for `/api/*` routes.
+- Completed tickets from previous days are archived daily at `00:05` by scheduled command `tickets:archive-completed`.
+- Attendance reports merge current tickets and archived tickets.
+- API errors for `/api/*` are always returned as JSON.
 
 ## License
 
