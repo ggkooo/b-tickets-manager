@@ -37,6 +37,7 @@ Artisan::command('tickets:archive-completed', function () {
                     'guiche' => $ticket->guiche,
                     'called_at' => $ticket->called_at,
                     'completed_at' => $ticket->completed_at ?? $ticket->updated_at,
+                    'completion_type' => $ticket->completion_type,
                     'ticket_created_at' => $ticket->created_at,
                     'ticket_updated_at' => $ticket->updated_at,
                     'archived_at' => $now,
@@ -54,7 +55,7 @@ Artisan::command('tickets:archive-completed', function () {
             });
         });
 
-    $this->info("{$archived} senha(s) concluida(s) arquivada(s).");
+    $this->info("{$archived} senha(s) finalizada(s) arquivada(s).");
 })->purpose('Archive completed tickets from previous days');
 
 Schedule::command('tickets:archive-completed')
