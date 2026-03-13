@@ -38,6 +38,8 @@ return [
     'ticket_printer' => [
         'enabled' => env('TICKET_PRINTER_ENABLED', false),
         'connector' => env('TICKET_PRINTER_CONNECTOR'),
+        'username' => env('TICKET_PRINTER_USERNAME'),
+        'password' => env('TICKET_PRINTER_PASSWORD'),
         'profile' => env('TICKET_PRINTER_PROFILE', 'simple'),
         'header' => env('TICKET_PRINTER_HEADER', 'SENHA DE ATENDIMENTO'),
     ],

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\TicketPrinterConnector;
 use Illuminate\Http\Request;
 use App\Models\Ticket;
 use Carbon\Carbon;
@@ -219,11 +220,7 @@ class TicketController extends Controller
             throw new RuntimeException('Impressao desativada. Ative TICKET_PRINTER_ENABLED=true no .env.');
         }
 
-        $connectorName = config('services.ticket_printer.connector');
-
-        if (!$connectorName) {
-            throw new RuntimeException('Conector da impressora nao configurado em TICKET_PRINTER_CONNECTOR.');
-        }
+        $connectorName = TicketPrinterConnector::resolve(config('services.ticket_printer', []));
 
         $profileName = config('services.ticket_printer.profile', 'simple');
         $header = config('services.ticket_printer.header', 'SENHA DE ATENDIMENTO');
