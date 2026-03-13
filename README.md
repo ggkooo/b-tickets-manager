@@ -202,14 +202,12 @@ Invalid credentials `401`:
 Allowed `service_type` values:
 - `Atendimento Normal`
 - `Atendimento Preferencial`
-- `Entrega de Exames`
-- `Recebimento de Amostras`
+- `Recebimento de Exames ou Entrega de Amostras`
 
 Generated key prefixes:
 - Normal: `N`
 - Preferencial: `P`
-- Entrega de Exames: `E`
-- Recebimento de Amostras: `R`
+- Recebimento de Exames ou Entrega de Amostras: `E`
 
 #### GET `/api/tickets` (Public)
 List pending tickets (`completed = false` and `called_at = null`), with priority tickets first.
@@ -298,6 +296,38 @@ Already called `422`:
 }
 ```
 
+#### POST `/api/tickets/{id}/recall` (Auth)
+Recall a ticket that was already called. `{id}` accepts numeric id or ticket key.
+This updates `called_at` to the current time so the ticket can be announced again.
+
+Success response `200`:
+```json
+{
+  "id": 2,
+  "key": "N-Z9X1",
+  "service_type": "Atendimento Normal",
+  "completed": false,
+  "guiche": "Guiche 01",
+  "called_at": "2026-03-12T11:14:00.000000Z",
+  "completed_at": null,
+  "created_at": "2026-03-12T11:05:00.000000Z",
+  "updated_at": "2026-03-12T11:14:00.000000Z"
+}
+```
+
+Validation `422` examples:
+```json
+{
+  "message": "Este ticket ainda nao foi chamado."
+}
+```
+
+```json
+{
+  "message": "Este ticket ja foi finalizado."
+}
+```
+
 #### PATCH `/api/tickets/{id}/complete` (Public)
 Mark ticket as completed. `{id}` accepts numeric id or ticket key.
 
@@ -313,6 +343,25 @@ Success response `200`:
   "completed_at": "2026-03-12T11:18:00.000000Z",
   "created_at": "2026-03-12T11:05:00.000000Z",
   "updated_at": "2026-03-12T11:18:00.000000Z"
+}
+```
+
+#### PATCH `/api/tickets/{id}/cancel` (Public)
+Mark ticket as canceled. `{id}` accepts numeric id or ticket key.
+This endpoint updates the same completion fields used by `/complete`.
+
+Success response `200`:
+```json
+{
+  "id": 2,
+  "key": "N-Z9X1",
+  "service_type": "Atendimento Normal",
+  "completed": true,
+  "guiche": "Guiche 01",
+  "called_at": "2026-03-12T11:10:00.000000Z",
+  "completed_at": "2026-03-12T11:20:00.000000Z",
+  "created_at": "2026-03-12T11:05:00.000000Z",
+  "updated_at": "2026-03-12T11:20:00.000000Z"
 }
 ```
 
@@ -389,6 +438,11 @@ Success response `200`:
     "priority": 27,
     "others": 552
   },
+  "attendances_by_outcome": {
+    "completed": 540,
+    "canceled": 39,
+    "unknown": 0
+  },
   "total_attendances": 579
 }
 ```
@@ -425,7 +479,7 @@ Not found `404`:
 Upload MP4 video to public storage.
 
 Request (multipart/form-data):
-- `video` (required, MIME `video/mp4`, max 51200 KB)
+- `video` (required, MIME `video/mp4`)
 
 Success response `201`:
 ```json
