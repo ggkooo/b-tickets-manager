@@ -13,6 +13,7 @@ class Ticket extends Model
         'guiche',
         'called_at',
         'completed_at',
+        'completion_type',
     ];
 
     protected $casts = [

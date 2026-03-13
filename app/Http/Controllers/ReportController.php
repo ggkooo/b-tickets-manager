@@ -20,12 +20,12 @@ class ReportController extends Controller
         $endDate = Carbon::parse($validated['end_date'])->endOfDay();
 
         $archivedAttendances = DB::table('ticket_archives')
-            ->selectRaw('service_type, called_at, ticket_created_at as created_reference, COALESCE(completed_at, ticket_updated_at) as completed_reference')
+            ->selectRaw("service_type, called_at, CASE WHEN completion_type = 'canceled' THEN 'canceled' ELSE 'completed' END as completion_type, ticket_created_at as created_reference, COALESCE(completed_at, ticket_updated_at) as completed_reference")
             ->whereBetween(DB::raw('COALESCE(completed_at, ticket_updated_at)'), [$startDate, $endDate])
             ->get();
 
         $activeAttendances = DB::table('tickets')
-            ->selectRaw('service_type, called_at, created_at as created_reference, COALESCE(completed_at, updated_at) as completed_reference')
+            ->selectRaw("service_type, called_at, CASE WHEN completion_type = 'canceled' THEN 'canceled' ELSE 'completed' END as completion_type, created_at as created_reference, COALESCE(completed_at, updated_at) as completed_reference")
             ->where('completed', true)
             ->whereBetween(DB::raw('COALESCE(completed_at, updated_at)'), [$startDate, $endDate])
             ->get();
@@ -35,6 +35,9 @@ class ReportController extends Controller
         $totalAttendances = $attendances->count();
         $priorityAttendances = $attendances->where('service_type', 'Atendimento Preferencial')->count();
         $otherAttendances = $totalAttendances - $priorityAttendances;
+        $canceledAttendances = $attendances->where('completion_type', 'canceled')->count();
+        $completedAttendances = $attendances->where('completion_type', 'completed')->count();
+        $unknownOutcomeAttendances = $totalAttendances - $canceledAttendances - $completedAttendances;
 
         $daysInRange = $startDate->copy()->startOfDay()->diffInDays($endDate->copy()->startOfDay()) + 1;
         $averageAttendancesPerDay = $daysInRange > 0
@@ -58,6 +61,11 @@ class ReportController extends Controller
             'attendances_by_type' => [
                 'priority' => $priorityAttendances,
                 'others' => $otherAttendances,
+            ],
+            'attendances_by_outcome' => [
+                'completed' => $completedAttendances,
+                'canceled' => $canceledAttendances,
+                'unknown' => $unknownOutcomeAttendances,
             ],
             'total_attendances' => $totalAttendances,
         ]);

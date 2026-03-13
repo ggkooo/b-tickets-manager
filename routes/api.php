@@ -12,11 +12,13 @@ Route::post('/login', [AuthController::class, 'login']);
 
 Route::get('/tickets', [TicketController::class, 'index']);
 Route::post('/tickets', [TicketController::class, 'store']);
-Route::patch('/tickets/{id}/complete', [TicketController::class, 'complete']);
-Route::get('/tickets/completed', [TicketController::class, 'completed']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/tickets/{id}/call', [TicketController::class, 'call']);
+    Route::post('/tickets/{id}/recall', [TicketController::class, 'recall']);
+    Route::patch('/tickets/{id}/complete', [TicketController::class, 'complete']);
+    Route::patch('/tickets/{id}/cancel', [TicketController::class, 'cancel']);
+    Route::get('/tickets/completed', [TicketController::class, 'completed']);
 });
 
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
