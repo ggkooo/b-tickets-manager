@@ -56,7 +56,7 @@ class TicketController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'service_type' => 'required|string|in:Atendimento Normal,Atendimento Preferencial,Entrega de Exames,Recebimento de Amostras',
+            'service_type' => 'required|string|in:Atendimento Normal,Atendimento Preferencial,Recebimento de Exames ou Entrega de Amostras',
         ]);
 
         $type = $validated['service_type'];
@@ -64,8 +64,7 @@ class TicketController extends Controller
         $prefix = match ($type) {
             'Atendimento Normal'       => 'N',
             'Atendimento Preferencial' => 'P',
-            'Entrega de Exames'        => 'E',
-            'Recebimento de Amostras'  => 'R',
+            'Recebimento de Exames ou Entrega de Amostras' => 'E',
         };
 
         $ticket = null;
@@ -73,7 +72,7 @@ class TicketController extends Controller
 
         while ($ticket === null && $attempts < 5) {
             $attempts++;
-            $sequence = $this->nextDailySequenceForPrefix($prefix);
+            $sequence = $this->nextSequenceForPrefix($prefix);
             $key = sprintf('%s-%04d', $prefix, $sequence);
 
             try {
@@ -147,16 +146,60 @@ class TicketController extends Controller
         return response()->json($ticket);
     }
 
+    /**
+     * Recall a ticket that was already called.
+     * POST /tickets/{id}/recall — requires Bearer token
+     */
+    public function recall(Request $request, $id)
+    {
+        $ticket = $this->resolveTicket($id);
+
+        if (!$ticket->called_at) {
+            return response()->json([
+                'message' => 'Este ticket ainda nao foi chamado.',
+                'ticket'  => $ticket,
+            ], 422);
+        }
+
+        if ($ticket->completed) {
+            return response()->json([
+                'message' => 'Este ticket ja foi finalizado.',
+                'ticket'  => $ticket,
+            ], 422);
+        }
+
+        $ticket->update([
+            'guiche'    => $request->user()->name,
+            'called_at' => Carbon::now(),
+        ]);
+
+        return response()->json($ticket);
+    }
+
     public function complete($id)
     {
         $ticket = $this->resolveTicket($id);
         $ticket->update([
             'completed' => true,
             'completed_at' => Carbon::now(),
+            'completion_type' => 'completed',
         ]);
 
         return response()->json($ticket);
     }
+
+    public function cancel($id)
+    {
+        $ticket = $this->resolveTicket($id);
+        $ticket->update([
+            'completed' => true,
+            'completed_at' => Carbon::now(),
+            'completion_type' => 'canceled',
+        ]);
+
+        return response()->json($ticket);
+    }
+
     /**
      * Resolve a ticket by numeric ID or by key (e.g. "P-QS1T").
      */
@@ -229,15 +272,15 @@ class TicketController extends Controller
     }
 
     /**
-     * Get next daily sequence for one prefix (N, P, E, R).
+     * Get next sequence for one prefix (N, P, E, R).
+     *
+     * This sequence is global per prefix to keep `key` unique in the tickets table.
      */
-    private function nextDailySequenceForPrefix(string $prefix): int
+    private function nextSequenceForPrefix(string $prefix): int
     {
-        $start = Carbon::today();
-        $end = Carbon::today()->endOfDay();
         $pattern = '/^' . preg_quote($prefix, '/') . '-(\d+)$/';
 
-        $maxSequence = Ticket::whereBetween('created_at', [$start, $end])
+        $maxSequence = Ticket::where('key', 'like', $prefix . '-%')
             ->pluck('key')
             ->map(function (string $key) use ($pattern): ?int {
                 if (!preg_match($pattern, $key, $matches)) {
