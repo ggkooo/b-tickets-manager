@@ -98,6 +98,51 @@ class AdminUserManagementTest extends TestCase
         $this->assertTrue(Hash::check('newsecret123', $targetUser->password));
     }
 
+    public function test_admin_can_register_a_user_with_normalized_login(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $token = $admin->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeaders([
+            ...$this->apiHeaders(),
+            'Authorization' => 'Bearer ' . $token,
+        ])->postJson('/api/register', [
+            'name' => 'Normalized User',
+            'login' => '  Novo.Usuario  ',
+            'password' => 'newsecret123',
+            'password_confirmation' => 'newsecret123',
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('data.user.login', 'novo.usuario');
+
+        $this->assertDatabaseHas('users', [
+            'login' => 'novo.usuario',
+            'name' => 'Normalized User',
+        ]);
+    }
+
+    public function test_admin_cannot_register_a_user_with_duplicate_login_ignoring_case_and_whitespace(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $token = $admin->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeaders([
+            ...$this->apiHeaders(),
+            'Authorization' => 'Bearer ' . $token,
+        ])->postJson('/api/register', [
+            'name' => 'Duplicate User',
+            'login' => '  ADMIN  ',
+            'password' => 'newsecret123',
+            'password_confirmation' => 'newsecret123',
+        ]);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['login']);
+    }
+
     public function test_admin_can_promote_a_user_to_administrator(): void
     {
         $admin = User::factory()->admin()->create();

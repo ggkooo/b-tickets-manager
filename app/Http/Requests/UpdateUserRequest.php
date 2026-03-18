@@ -3,10 +3,22 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UpdateUserRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (!$this->has('login')) {
+            return;
+        }
+
+        $this->merge([
+            'login' => Str::lower(trim((string) $this->input('login'))),
+        ]);
+    }
+
     public function authorize(): bool
     {
         return true;

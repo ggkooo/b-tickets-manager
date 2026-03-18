@@ -3,9 +3,21 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 
 class RegisterRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (!$this->has('login')) {
+            return;
+        }
+
+        $this->merge([
+            'login' => Str::lower(trim((string) $this->input('login'))),
+        ]);
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
