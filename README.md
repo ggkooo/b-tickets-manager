@@ -95,13 +95,13 @@ Allowed `service_type` values:
 
 - `Atendimento Normal`
 - `Atendimento Preferencial`
-- `Recebimento de Exames ou Entrega de Amostras`
+- `Retirada de Exames ou Entrega de Amostras`
 
 Generated ticket key prefix by service type:
 
 - `N` for `Atendimento Normal`
 - `P` for `Atendimento Preferencial`
-- `E` for `Recebimento de Exames ou Entrega de Amostras`
+- `E` for `Retirada de Exames ou Entrega de Amostras`
 
 Outcome types used by reports:
 

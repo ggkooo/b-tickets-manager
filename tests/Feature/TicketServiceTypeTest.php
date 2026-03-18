@@ -16,12 +16,12 @@ class TicketServiceTypeTest extends TestCase
         $response = $this
             ->withHeader('X-API-KEY', 'test-api-key')
             ->postJson('/api/tickets', [
-                'service_type' => 'Recebimento de Exames ou Entrega de Amostras',
+                'service_type' => 'Retirada de Exames ou Entrega de Amostras',
             ]);
 
         $response
             ->assertStatus(201)
-            ->assertJsonPath('ticket.service_type', 'Recebimento de Exames ou Entrega de Amostras')
+            ->assertJsonPath('ticket.service_type', 'Retirada de Exames ou Entrega de Amostras')
             ->assertJsonPath('ticket.completed', false);
 
         $this->assertStringStartsWith('E-', $response->json('ticket.key'));

@@ -57,7 +57,7 @@ class TicketController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'service_type' => 'required|string|in:Atendimento Normal,Atendimento Preferencial,Recebimento de Exames ou Entrega de Amostras',
+            'service_type' => 'required|string|in:Atendimento Normal,Atendimento Preferencial,Retirada de Exames ou Entrega de Amostras',
         ]);
 
         $type = $validated['service_type'];
@@ -65,7 +65,7 @@ class TicketController extends Controller
         $prefix = match ($type) {
             'Atendimento Normal'       => 'N',
             'Atendimento Preferencial' => 'P',
-            'Recebimento de Exames ou Entrega de Amostras' => 'E',
+            'Retirada de Exames ou Entrega de Amostras' => 'E',
         };
 
         $ticket = null;
