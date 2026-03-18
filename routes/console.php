@@ -37,6 +37,7 @@ Artisan::command('tickets:archive-completed', function () {
                     'key' => $ticket->key,
                     'service_type' => $ticket->service_type,
                     'guiche' => $ticket->guiche,
+                    'attended_by_user_id' => $ticket->attended_by_user_id,
                     'called_at' => $ticket->called_at,
                     'completed_at' => $ticket->completed_at ?? $ticket->updated_at,
                     'completion_type' => $completionType,

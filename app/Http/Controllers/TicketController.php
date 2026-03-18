@@ -141,6 +141,7 @@ class TicketController extends Controller
 
         $ticket->update([
             'guiche'    => $request->user()->name,
+            'attended_by_user_id' => $request->user()->id,
             'called_at' => Carbon::now(),
         ]);
 
@@ -171,6 +172,7 @@ class TicketController extends Controller
 
         $ticket->update([
             'guiche'    => $request->user()->name,
+            'attended_by_user_id' => $request->user()->id,
             'called_at' => Carbon::now(),
         ]);
 
