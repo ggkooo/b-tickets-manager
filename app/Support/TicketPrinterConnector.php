@@ -6,55 +6,37 @@ use RuntimeException;
 
 class TicketPrinterConnector
 {
-    public static function resolve(array $config): string
+    public static function resolve(array $config): array
     {
-        $connector = trim((string) ($config['connector'] ?? ''));
+        $host = trim((string) ($config['host'] ?? ''));
 
-        if ($connector === '') {
-            throw new RuntimeException('Conector da impressora nao configurado em TICKET_PRINTER_CONNECTOR.');
+        if ($host === '') {
+            throw new RuntimeException('Host da impressora nao configurado em TICKET_PRINTER_HOST.');
         }
 
-        if (!str_starts_with(strtolower($connector), 'smb://')) {
-            return $connector;
+        $portRaw = $config['port'] ?? 9100;
+
+        if (is_string($portRaw)) {
+            $portRaw = trim($portRaw);
         }
 
-        $parts = parse_url($connector);
-
-        if ($parts === false) {
-            return $connector;
+        if ($portRaw === '' || $portRaw === null) {
+            $portRaw = 9100;
         }
 
-        if (isset($parts['user'])) {
-            return $connector;
+        if (!is_numeric($portRaw)) {
+            throw new RuntimeException('Porta da impressora invalida em TICKET_PRINTER_PORT.');
         }
 
-        $username = trim((string) ($config['username'] ?? ''));
-        $password = (string) ($config['password'] ?? '');
+        $port = (int) $portRaw;
 
-        if ($password !== '' && $username === '') {
-            throw new RuntimeException('TICKET_PRINTER_PASSWORD requer TICKET_PRINTER_USERNAME para conexao SMB.');
+        if ($port < 1 || $port > 65535) {
+            throw new RuntimeException('Porta da impressora invalida em TICKET_PRINTER_PORT.');
         }
 
-        if ($username === '') {
-            return $connector;
-        }
-
-        $authority = $parts['host'] ?? null;
-
-        if ($authority === null || !isset($parts['path'])) {
-            return $connector;
-        }
-
-        if (isset($parts['port'])) {
-            $authority .= ':' . $parts['port'];
-        }
-
-        $credentials = $username;
-
-        if ($password !== '') {
-            $credentials .= ':' . $password;
-        }
-
-        return 'smb://' . $credentials . '@' . $authority . $parts['path'];
+        return [
+            'host' => $host,
+            'port' => $port,
+        ];
     }
 }
