@@ -9,7 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
 use Mike42\Escpos\CapabilityProfile;
-use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
+use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
 use Mike42\Escpos\Printer;
 use RuntimeException;
 use Throwable;
@@ -222,14 +222,14 @@ class TicketController extends Controller
             throw new RuntimeException('Impressao desativada. Ative TICKET_PRINTER_ENABLED=true no .env.');
         }
 
-        $connectorName = TicketPrinterConnector::resolve(config('services.ticket_printer', []));
+        $printerConnection = TicketPrinterConnector::resolve(config('services.ticket_printer', []));
 
         $profileName = config('services.ticket_printer.profile', 'simple');
         $header = config('services.ticket_printer.header', 'SENHA DE ATENDIMENTO');
         $printedAt = now(config('app.timezone'))->format('d/m/Y H:i:s');
 
         $profile = CapabilityProfile::load($profileName);
-        $connector = new WindowsPrintConnector($connectorName);
+        $connector = new NetworkPrintConnector($printerConnection['host'], $printerConnection['port']);
         $printer = new Printer($connector, $profile);
 
         try {
