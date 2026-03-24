@@ -36,26 +36,23 @@ Local base URL:
 http://localhost:8000/api
 ```
 
-## Ticket Printing over SMB
+## Ticket Printing over Network
 
-The backend uses `mike42/escpos-php` with `WindowsPrintConnector`, which also works on Linux for shared SMB printers.
+The backend uses `mike42/escpos-php` with `NetworkPrintConnector` (RAW TCP).
 
 Example `.env` for Ubuntu:
 
 ```dotenv
 TICKET_PRINTER_ENABLED=true
-TICKET_PRINTER_CONNECTOR="smb://PRINT-SERVER/EPSON-TM-T20X"
-TICKET_PRINTER_USERNAME=print-user
-TICKET_PRINTER_PASSWORD=print-secret
+TICKET_PRINTER_HOST="200.132.193.233"
+TICKET_PRINTER_PORT=9100
 TICKET_PRINTER_PROFILE=simple
 TICKET_PRINTER_HEADER="SENHA DE ATENDIMENTO"
 ```
 
 Notes:
 
-- If `TICKET_PRINTER_CONNECTOR` already contains credentials, the backend keeps that value unchanged.
-- If `TICKET_PRINTER_USERNAME` is set, the backend injects `username[:password]` into the SMB URL before printing.
-- On Ubuntu, the server must have Samba client tools available so the SMB print command can run.
+- Ensure the printer accepts RAW TCP on the configured port (usually `9100`).
 - After changing printer variables in production, run `php artisan config:clear` or restart PHP-FPM/queue workers if configuration is cached.
 
 ## Authentication and Authorization
