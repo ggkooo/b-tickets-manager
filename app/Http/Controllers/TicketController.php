@@ -210,7 +210,10 @@ class TicketController extends Controller
     {
         return is_numeric($identifier)
             ? Ticket::findOrFail($identifier)
-            : Ticket::where('key', $identifier)->firstOrFail();
+            : Ticket::where('key', $identifier)
+                ->orderBy('created_at', 'desc')
+                ->orderBy('id', 'desc')
+                ->firstOrFail();
     }
 
     /**
@@ -273,13 +276,15 @@ class TicketController extends Controller
     /**
      * Get next sequence for one prefix (N, P, E, R).
      *
-     * This sequence is global per prefix to keep `key` unique in the tickets table.
+     * This sequence resets daily per prefix (e.g. N-0001 every new day).
      */
     private function nextSequenceForPrefix(string $prefix): int
     {
         $pattern = '/^' . preg_quote($prefix, '/') . '-(\d+)$/';
+        $today = Carbon::today();
 
-        $maxSequence = Ticket::where('key', 'like', $prefix . '-%')
+        $maxSequence = Ticket::whereDate('created_at', $today)
+            ->where('key', 'like', $prefix . '-%')
             ->pluck('key')
             ->map(function (string $key) use ($pattern): ?int {
                 if (!preg_match($pattern, $key, $matches)) {
