@@ -17,6 +17,7 @@ class TicketServiceTypeTest extends TestCase
             ->withHeader('X-API-KEY', 'test-api-key')
             ->postJson('/api/tickets', [
                 'service_type' => 'Retirada de Exames ou Entrega de Amostras',
+                'location' => 'campus',
             ]);
 
         $response
