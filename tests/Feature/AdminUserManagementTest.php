@@ -27,9 +27,9 @@ class AdminUserManagementTest extends TestCase
         putenv('APP_API_KEY=test-api-key');
     }
 
-    public function test_admin_can_list_users(): void
+    public function test_superadmin_can_list_users(): void
     {
-        $admin = User::factory()->admin()->create([
+        $admin = User::factory()->superAdmin()->create([
             'name' => 'Zulu Admin',
         ]);
         $firstUser = User::factory()->create([
@@ -58,17 +58,19 @@ class AdminUserManagementTest extends TestCase
         $response->assertJsonFragment([
             'login' => $firstUser->login,
             'is_admin' => false,
+            'is_super_admin' => false,
         ]);
 
         $response->assertJsonFragment([
             'login' => $admin->login,
-            'is_admin' => true,
+            'is_admin' => false,
+            'is_super_admin' => true,
         ]);
     }
 
-    public function test_admin_can_update_a_user(): void
+    public function test_superadmin_can_update_a_user(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $targetUser = User::factory()->create([
             'login' => 'regular.user',
         ]);
@@ -98,9 +100,9 @@ class AdminUserManagementTest extends TestCase
         $this->assertTrue(Hash::check('newsecret123', $targetUser->password));
     }
 
-    public function test_admin_can_register_a_user_with_normalized_login(): void
+    public function test_superadmin_can_register_a_user_with_normalized_login(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $token = $admin->createToken('test-token')->plainTextToken;
 
         $response = $this->withHeaders([
@@ -123,9 +125,9 @@ class AdminUserManagementTest extends TestCase
         ]);
     }
 
-    public function test_admin_cannot_register_a_user_with_duplicate_login_ignoring_case_and_whitespace(): void
+    public function test_superadmin_cannot_register_a_user_with_duplicate_login_ignoring_case_and_whitespace(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $token = $admin->createToken('test-token')->plainTextToken;
 
         $response = $this->withHeaders([
@@ -143,9 +145,9 @@ class AdminUserManagementTest extends TestCase
             ->assertJsonValidationErrors(['login']);
     }
 
-    public function test_admin_can_promote_a_user_to_administrator(): void
+    public function test_superadmin_can_promote_a_user_to_administrator(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $targetUser = User::factory()->create();
         $token = $admin->createToken('test-token')->plainTextToken;
 
@@ -161,9 +163,9 @@ class AdminUserManagementTest extends TestCase
         $this->assertTrue($targetUser->fresh()->is_admin);
     }
 
-    public function test_admin_can_remove_administrator_access_from_another_user(): void
+    public function test_superadmin_can_remove_administrator_access_from_another_user(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $targetUser = User::factory()->admin()->create();
         $token = $admin->createToken('test-token')->plainTextToken;
 
@@ -179,9 +181,9 @@ class AdminUserManagementTest extends TestCase
         $this->assertFalse($targetUser->fresh()->is_admin);
     }
 
-    public function test_admin_can_delete_a_non_admin_user(): void
+    public function test_superadmin_can_delete_a_non_admin_user(): void
     {
-        $admin = User::factory()->admin()->create();
+        $admin = User::factory()->superAdmin()->create();
         $targetUser = User::factory()->create();
         $token = $admin->createToken('test-token')->plainTextToken;
 
@@ -201,7 +203,7 @@ class AdminUserManagementTest extends TestCase
         ]);
     }
 
-    public function test_non_admin_cannot_access_user_management_routes(): void
+    public function test_non_superadmin_cannot_access_user_management_routes(): void
     {
         $user = User::factory()->create();
         $targetUser = User::factory()->create();
@@ -215,19 +217,22 @@ class AdminUserManagementTest extends TestCase
         $response
             ->assertForbidden()
             ->assertJson([
-                'message' => 'Forbidden: administrator access required',
+                'message' => 'Forbidden: super administrator access required',
             ]);
     }
 
     public function test_cannot_delete_the_last_administrator(): void
     {
-        $admin = User::where('login', 'admin')->firstOrFail();
+        $admin = User::factory()->superAdmin()->create();
+        $lastAdmin = User::where('login', 'admin')
+            ->where('location', User::LOCATION_CAMPUS)
+            ->firstOrFail();
         $token = $admin->createToken('test-token')->plainTextToken;
 
         $response = $this->withHeaders([
             ...$this->apiHeaders(),
             'Authorization' => 'Bearer ' . $token,
-        ])->deleteJson('/api/users/' . $admin->id);
+        ])->deleteJson('/api/users/' . $lastAdmin->id);
 
         $response
             ->assertStatus(422)
@@ -238,18 +243,40 @@ class AdminUserManagementTest extends TestCase
 
     public function test_cannot_remove_admin_access_from_the_last_administrator(): void
     {
-        $admin = User::where('login', 'admin')->firstOrFail();
+        $admin = User::factory()->superAdmin()->create();
+        $lastAdmin = User::where('login', 'admin')
+            ->where('location', User::LOCATION_CAMPUS)
+            ->firstOrFail();
         $token = $admin->createToken('test-token')->plainTextToken;
 
         $response = $this->withHeaders([
             ...$this->apiHeaders(),
             'Authorization' => 'Bearer ' . $token,
-        ])->patchJson('/api/users/' . $admin->id . '/remove-admin');
+        ])->patchJson('/api/users/' . $lastAdmin->id . '/remove-admin');
 
         $response
             ->assertStatus(422)
             ->assertJson([
-                'message' => 'Cannot remove administrator access from the last administrator',
+                'message' => 'Super administrator role cannot be changed through this route.',
+            ]);
+    }
+
+    public function test_cannot_delete_the_last_super_administrator(): void
+    {
+        $superAdmin = User::where('login', 'admin')
+            ->where('location', User::LOCATION_CAMPUS)
+            ->firstOrFail();
+        $token = $superAdmin->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeaders([
+            ...$this->apiHeaders(),
+            'Authorization' => 'Bearer ' . $token,
+        ])->deleteJson('/api/users/' . $superAdmin->id);
+
+        $response
+            ->assertStatus(422)
+            ->assertJson([
+                'message' => 'Cannot delete the last super administrator',
             ]);
     }
 }
