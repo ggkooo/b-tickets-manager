@@ -1,144 +1,268 @@
 # B-Unilab API
 
-REST API for a queue/totem attendance system.
+API REST do sistema de senhas da Unilab (totem + guiche), com operacao multiunidade e isolamento total por local.
 
-## Tech Stack
+## Visao geral
 
-- Laravel 12
-- Laravel Sanctum (Bearer token authentication)
-- Global API key middleware (`X-API-KEY`) for all `/api/*` routes
+- Stack: Laravel 12 + Sanctum
+- Autenticacao: Bearer Token (Sanctum)
+- Seguranca adicional: API Key obrigatoria em todas as rotas `/api/*`
+- Multiunidade: `campus` e `centro`
+- Perfis: usuario comum, administrador e superadministrador
+- Impressao automatica de senha na criacao do ticket
+- Sem endpoint de reimpressao
 
-## Requirements
+## Requisitos
 
 - PHP 8.2+
 - Composer
-- A Laravel-supported database (SQLite, MySQL, PostgreSQL, etc.)
+- Banco compativel com Laravel (SQLite, MySQL, PostgreSQL etc.)
 
-## Setup
+## Setup rapido
 
 ```bash
 composer install
 cp .env.example .env
 php artisan key:generate
+```
 
-# Configure DB and APP_API_KEY in .env
+Configure no `.env`:
+
+```dotenv
+APP_API_KEY=seu_api_key_forte
+
+DB_CONNECTION=sqlite
+# ou mysql/pgsql...
+```
+
+Depois rode:
+
+```bash
 php artisan migrate
-
-# Optional, but recommended for video public URLs
+php artisan db:seed
 php artisan storage:link
-
 php artisan serve
 ```
 
-Local base URL:
+Base URL local:
 
 ```text
 http://localhost:8000/api
 ```
 
-## Ticket Printing over Network
+## Seguranca e headers
 
-The backend uses `mike42/escpos-php` with `NetworkPrintConnector` (RAW TCP).
-
-Example `.env` for Ubuntu:
-
-```dotenv
-TICKET_PRINTER_ENABLED=true
-TICKET_PRINTER_HOST="200.132.193.233"
-TICKET_PRINTER_PORT=9100
-TICKET_PRINTER_PROFILE=simple
-TICKET_PRINTER_HEADER="SENHA DE ATENDIMENTO"
-```
-
-Notes:
-
-- Ensure the printer accepts RAW TCP on the configured port (usually `9100`).
-- After changing printer variables in production, run `php artisan config:clear` or restart PHP-FPM/queue workers if configuration is cached.
-
-## Authentication and Authorization
-
-Every API request must include:
+### Header obrigatorio em TODAS as rotas
 
 ```http
 X-API-KEY: <APP_API_KEY>
 Accept: application/json
 ```
 
-For authenticated routes, also include:
+Se faltar ou estiver invalida:
+
+```json
+{
+  "message": "Unauthorized: Invalid or missing API Key"
+}
+```
+
+### Header adicional em rotas autenticadas
 
 ```http
 Authorization: Bearer <sanctum_token>
 ```
 
-Access levels:
+## Multiunidade e isolamento
 
-- Public: requires only `X-API-KEY`
-- Auth: requires `X-API-KEY` and a valid Bearer token
-- Admin: requires `X-API-KEY`, valid Bearer token, and `is_admin = true`
+Locais validos:
 
-## Default Admin User
+- `campus`
+- `centro`
 
-After migrations, the project ensures a default admin user:
+Regras:
+
+- Login exige `login + password + location`
+- Mesmo `login` pode existir em locais diferentes
+- Usuarios so enxergam e operam dados do proprio local
+- Administradores so podem consultar relatorios do proprio local
+- Superadministradores gerenciam usuarios, videos e impressoras do proprio local
+- Regra de ultimo admin e por local
+
+## Como informar `location`
+
+### Rotas publicas de ticket
+
+Para as rotas abaixo, informe o local por body/query/header:
+
+- `GET /api/tickets`
+- `POST /api/tickets`
+- `GET /api/tickets/recently-called`
+
+Pode enviar:
+
+1. Campo `location` (query/body)
+2. Header `X-UNILAB-LOCATION`
+
+Se enviar os dois, o backend prioriza o campo `location`.
+
+### Rotas autenticadas
+
+Nao precisa enviar `location`; o sistema usa o local do usuario autenticado.
+
+## Usuarios padrao
+
+O seeder cria (ou atualiza) um admin para cada local:
 
 - `login`: `admin`
 - `password`: `admin`
+- `name`: `Administrador`
 - `is_admin`: `true`
+- `is_super_admin`: `true`
+- `location`: `campus` e `centro`
 
-Change this password immediately in production.
+Altere essas senhas em producao.
 
-## Ticket Business Rules
+## Impressao de tickets
 
-Allowed `service_type` values:
+A impressao ocorre automaticamente no `POST /api/tickets`.
+
+### Importante
+
+- Nao existe endpoint de reimpressao
+- A impressao e resolvida pela configuracao do local do ticket
+- Sem configuracao cadastrada em banco para o local, a impressao falha (log em `storage/logs/laravel.log`)
+
+### Formatos suportados
+
+- `network` (TCP/IP): host + port
+- `shared_windows` (impressora compartilhada via rede)
+
+Para `shared_windows`, o sistema aceita UNC e converte para SMB internamente:
+
+- Entrada aceita: `\\SERVIDOR\\IMPRESSORA`
+- Uso interno: `smb://SERVIDOR/IMPRESSORA`
+
+### Fonte de configuracao
+
+A impressao usa exclusivamente os dados salvos em `printer_settings` por localidade (`campus`/`centro`).
+
+## Regras de negocio de ticket
+
+`service_type` aceitos:
 
 - `Atendimento Normal`
 - `Atendimento Preferencial`
 - `Retirada de Exames ou Entrega de Amostras`
 
-Generated ticket key prefix by service type:
+Prefixos:
 
-- `N` for `Atendimento Normal`
-- `P` for `Atendimento Preferencial`
-- `E` for `Retirada de Exames ou Entrega de Amostras`
+- `N` -> Atendimento Normal
+- `P` -> Atendimento Preferencial
+- `E` -> Retirada de Exames ou Entrega de Amostras
 
-Outcome types used by reports:
+Sequencia:
 
-- `completed`
-- `canceled`
+- Reinicia diariamente por prefixo e por local
+- Exemplo: `N-0001`, `P-0001`, `E-0001`
 
-## Endpoint Summary
+## Endpoints
 
-| Method | Path | Access |
+### Publicos
+
+| Metodo | Endpoint | Descricao |
 |---|---|---|
-| POST | `/api/register` | Public |
-| POST | `/api/login` | Public |
-| GET | `/api/tickets` | Public |
-| POST | `/api/tickets` | Public |
-| GET | `/api/tickets/recently-called` | Public |
-| GET | `/api/videos` | Public |
-| GET | `/api/videos/{filename}` | Public |
-| POST | `/api/tickets/{id}/call` | Auth |
-| POST | `/api/tickets/{id}/recall` | Auth |
-| PATCH | `/api/tickets/{id}/complete` | Auth |
-| PATCH | `/api/tickets/{id}/cancel` | Auth |
-| GET | `/api/tickets/completed` | Auth |
-| GET | `/api/reports/attendances` | Admin |
-| POST | `/api/videos/upload` | Admin |
-| DELETE | `/api/videos/{filename}` | Admin |
-| GET | `/api/users` | Admin |
-| PATCH | `/api/users/{user}` | Admin |
-| DELETE | `/api/users/{user}` | Admin |
-| PATCH | `/api/users/{user}/make-admin` | Admin |
-| PATCH | `/api/users/{user}/remove-admin` | Admin |
+| POST | `/api/login` | Login com `location` |
+| GET | `/api/tickets` | Fila aberta do local |
+| POST | `/api/tickets` | Cria ticket e tenta imprimir |
+| GET | `/api/tickets/recently-called` | Ultimas 5 chamadas do local |
+| GET | `/api/videos` | Lista videos mp4 |
+| GET | `/api/videos/{filename}` | Stream de video mp4 |
 
-## Detailed Endpoints
+### Autenticados (`auth:sanctum`)
 
-### 1) Auth
+| Metodo | Endpoint | Descricao |
+|---|---|---|
+| POST | `/api/tickets/{id}/call` | Chama ticket |
+| POST | `/api/tickets/{id}/recall` | Rechama ticket |
+| PATCH | `/api/tickets/{id}/complete` | Finaliza como atendido |
+| PATCH | `/api/tickets/{id}/cancel` | Finaliza como cancelado |
+| GET | `/api/tickets/completed` | Tickets finalizados hoje no local |
 
-#### POST `/api/register` (Public)
+Observacao: em `/api/tickets/{id}/...`, o `{id}` pode ser ID numerico ou chave (ex.: `P-0001`).
 
-Creates a non-admin user.
+### Admin (`auth:sanctum` + `admin`)
 
-Request body:
+| Metodo | Endpoint | Descricao |
+|---|---|---|
+| GET | `/api/reports/attendances` | Relatorio de atendimentos |
+
+### Superadmin (`auth:sanctum` + `superadmin`)
+
+| Metodo | Endpoint | Descricao |
+|---|---|---|
+| POST | `/api/register` | Cadastra usuario no mesmo local do superadmin |
+| GET | `/api/printer-settings` | Le configuracao da impressora do local |
+| POST | `/api/printer-settings` | Salva configuracao da impressora do local |
+| POST | `/api/videos/upload` | Upload de video mp4 |
+| DELETE | `/api/videos/{filename}` | Remove video |
+| GET | `/api/users` | Lista usuarios do local |
+| PATCH | `/api/users/{user}` | Atualiza usuario |
+| DELETE | `/api/users/{user}` | Remove usuario |
+| PATCH | `/api/users/{user}/make-admin` | Promove para admin |
+| PATCH | `/api/users/{user}/remove-admin` | Remove admin |
+
+## Exemplos de payloads
+
+### 1) Login
+
+`POST /api/login`
+
+```json
+{
+  "login": "admin",
+  "password": "admin",
+  "location": "campus"
+}
+```
+
+Sucesso `200`:
+
+```json
+{
+  "status": "success",
+  "message": "Login successful",
+  "data": {
+    "access_token": "1|token-value",
+    "token_type": "Bearer",
+    "user": {
+      "id": 1,
+      "uuid": "...",
+      "name": "Administrador",
+      "login": "admin",
+      "location": "campus",
+      "active": true,
+      "is_admin": true,
+      "is_super_admin": true,
+      "created_at": "2026-04-14T12:00:00.000000Z",
+      "updated_at": "2026-04-14T12:00:00.000000Z"
+    }
+  }
+}
+```
+
+Erro `401`:
+
+```json
+{
+  "status": "error",
+  "message": "Invalid credentials"
+}
+```
+
+### 2) Registrar usuario (superadmin)
+
+`POST /api/register`
 
 ```json
 {
@@ -149,505 +273,226 @@ Request body:
 }
 ```
 
-Validation rules:
+Regras:
 
-- `name`: required, string, max 255
-- `login`: required, string, max 100, unique in `users.login`
-- `password`: required, string, min 8, confirmed
+- `login` e normalizado para minusculo
+- unico por local (nao global)
+- usuario criado como `is_admin = false`, `is_super_admin = false` e no local do superadmin logado
 
-Success `201`:
+### 3) Criar ticket
 
-```json
-{
-  "status": "success",
-  "message": "User registered successfully",
-  "data": {
-    "user": {
-      "id": 10,
-      "uuid": "dd43f5c8-b370-4f67-9ec6-85ba77f86659",
-      "name": "Maria Silva",
-      "login": "maria.silva",
-      "active": true,
-      "is_admin": false,
-      "created_at": "2026-03-13T12:00:00.000000Z",
-      "updated_at": "2026-03-13T12:00:00.000000Z"
-    }
-  }
-}
-```
-
-#### POST `/api/login` (Public)
-
-Authenticates user and returns a Sanctum token.
-
-Request body:
+`POST /api/tickets`
 
 ```json
 {
-  "login": "maria.silva",
-  "password": "secret123"
+  "service_type": "Atendimento Preferencial",
+  "location": "campus"
 }
 ```
 
-Validation rules:
-
-- `login`: required, string, max 255
-- `password`: required, string
-
-Success `200`:
+Sucesso `201`:
 
 ```json
 {
-  "status": "success",
-  "message": "Login successful",
-  "data": {
-    "access_token": "1|token-value",
-    "token_type": "Bearer",
-    "user": {
-      "id": 10,
-      "uuid": "dd43f5c8-b370-4f67-9ec6-85ba77f86659",
-      "name": "Maria Silva",
-      "login": "maria.silva",
-      "active": true,
-      "is_admin": false,
-      "created_at": "2026-03-13T12:00:00.000000Z",
-      "updated_at": "2026-03-13T12:00:00.000000Z"
-    }
-  }
-}
-```
-
-Invalid credentials `401`:
-
-```json
-{
-  "status": "error",
-  "message": "Invalid credentials"
-}
-```
-
-### 2) Tickets
-
-Note: in `/api/tickets/{id}/...`, the `{id}` can be either numeric ticket ID or ticket key (for example `P-0001`).
-
-#### GET `/api/tickets` (Public)
-
-Returns waiting tickets (`completed = false` and `called_at = null`).
-Priority service appears first.
-
-Success `200` example:
-
-```json
-[
-  {
-    "id": 1,
-    "key": "P-0001",
+  "ticket": {
+    "id": 12,
+    "key": "P-0003",
+    "location": "campus",
     "service_type": "Atendimento Preferencial",
     "completed": false,
-    "guiche": null,
-    "called_at": null,
-    "completed_at": null,
-    "completion_type": null,
-    "created_at": "2026-03-13T10:00:00.000000Z",
-    "updated_at": "2026-03-13T10:00:00.000000Z"
-  }
-]
-```
-
-#### POST `/api/tickets` (Public)
-
-Creates a new ticket and tries to print it.
-
-Request body:
-
-```json
-{
-  "service_type": "Atendimento Normal"
-}
-```
-
-Validation rules:
-
-- `service_type`: required, string, one of the allowed service values
-
-Success `201`:
-
-```json
-{
-  "ticket": {
-    "id": 2,
-    "key": "N-0001",
-    "service_type": "Atendimento Normal",
-    "completed": false,
-    "guiche": null,
-    "called_at": null,
-    "completed_at": null,
-    "completion_type": null,
-    "created_at": "2026-03-13T10:05:00.000000Z",
-    "updated_at": "2026-03-13T10:05:00.000000Z"
+    "created_at": "2026-04-14T12:41:09.000000Z",
+    "updated_at": "2026-04-14T12:41:09.000000Z"
   },
   "print": {
-    "status": "sucesso"
+    "status": "enviando"
   }
 }
 ```
 
-Success with print failure still returns `201`:
+Observacao: a impressao e disparada de forma assincrona apos a resposta ser enviada ao cliente. O campo `print.status` sempre retorna `"enviando"`. Sucesso ou falha sao registrados em `storage/logs/laravel.log`.
+
+### 4) Configurar impressora (superadmin)
+
+`GET /api/printer-settings`
+
+- Retorna configuracao do local do superadmin
+- Se nao existir, retorna defaults
+
+`POST /api/printer-settings`
+
+Campos:
+
+- `enabled` (boolean, obrigatorio)
+- `connection_type` (`network` ou `shared_windows`, obrigatorio)
+- `host` (obrigatorio quando `network`)
+- `port` (opcional quando `network`, default `9100`)
+- `share_path` (obrigatorio quando `shared_windows`)
+- `profile` (opcional, default `simple`)
+- `header` (opcional, default `SENHA DE ATENDIMENTO`)
+
+Exemplo `network`:
 
 ```json
 {
-  "ticket": {
-    "id": 2,
-    "key": "N-0001"
-  },
-  "print": {
-    "status": "erro",
-    "message": "Ticket gerado, mas nao foi possivel imprimir automaticamente.",
-    "error": "..."
+  "enabled": true,
+  "connection_type": "network",
+  "host": "10.0.0.25",
+  "port": 9100,
+  "profile": "simple",
+  "header": "SENHA CAMPUS"
+}
+```
+
+Exemplo `shared_windows`:
+
+```json
+{
+  "enabled": true,
+  "connection_type": "shared_windows",
+  "share_path": "\\\\200.132.194.29\\EPSON-TM-T20X",
+  "profile": "simple",
+  "header": "SENHA CENTRO"
+}
+```
+
+Resposta de sucesso:
+
+```json
+{
+  "message": "Configuracao da impressora salva com sucesso.",
+  "data": {
+    "id": 1,
+    "location": "centro",
+    "enabled": true,
+    "connection_type": "shared_windows",
+    "host": null,
+    "port": null,
+    "share_path": "\\\\200.132.194.29\\EPSON-TM-T20X",
+    "profile": "simple",
+    "header": "SENHA DE ATENDIMENTO",
+    "created_at": "2026-04-14T12:31:34.000000Z",
+    "updated_at": "2026-04-14T12:31:34.000000Z"
   }
 }
 ```
 
-Validation error `422` example:
+Erros `422` comuns:
 
 ```json
 {
-  "message": "The selected service_type is invalid.",
-  "errors": {
-    "service_type": [
-      "The selected service_type is invalid."
-    ]
-  }
+  "message": "Host e obrigatorio para impressora de rede."
 }
 ```
-
-#### POST `/api/tickets/{id}/call` (Auth)
-
-Sets `called_at` to now and `guiche` from the authenticated user name.
-
-Request body: none
-
-Success `200`: returns updated ticket.
-
-If already called, returns `422`.
-
-#### POST `/api/tickets/{id}/recall` (Auth)
-
-Recalls a ticket by updating `called_at` to now and `guiche` from authenticated user.
-
-Request body: none
-
-Success `200`: returns updated ticket.
-
-Common `422` cases:
-
-- Ticket has not been called yet
-- Ticket is already completed
-
-#### PATCH `/api/tickets/{id}/complete` (Auth)
-
-Marks the ticket as completed.
-
-Side effects:
-
-- `completed = true`
-- `completed_at = now`
-- `completion_type = completed`
-
-Request body: none
-
-Success `200`: returns updated ticket.
-
-#### PATCH `/api/tickets/{id}/cancel` (Auth)
-
-Marks the ticket as canceled.
-
-Side effects:
-
-- `completed = true`
-- `completed_at = now`
-- `completion_type = canceled`
-
-Request body: none
-
-Success `200`: returns updated ticket.
-
-#### GET `/api/tickets/completed` (Auth)
-
-Returns tickets completed today. Uses `completed_at`, and falls back to `updated_at` when needed.
-
-Success `200`: array of tickets.
-
-#### GET `/api/tickets/recently-called` (Public)
-
-Returns up to 5 most recently called tickets.
-
-Success `200`: array of tickets.
-
-### 3) Reports
-
-#### GET `/api/reports/attendances` (Admin)
-
-Returns attendance KPIs for a date range, combining active and archived data.
-
-Query params:
-
-- `start_date` required, format `Y-m-d`
-- `end_date` required, format `Y-m-d`, must be equal or after `start_date`
-
-Example:
-
-```text
-/api/reports/attendances?start_date=2026-03-01&end_date=2026-03-13
-```
-
-Success `200`:
 
 ```json
 {
-  "period": {
-    "start_date": "2026-03-01",
-    "end_date": "2026-03-13",
-    "days": 13
-  },
-  "average_wait_time": {
-    "seconds": 325,
-    "formatted": "00:05:25"
-  },
-  "average_attendances_per_day": 48.25,
-  "attendances_per_day": {
-    "2026-03-12": 44,
-    "2026-03-13": 51
-  },
-  "attendances_by_type": {
-    "priority": 27,
-    "others": 552
-  },
-  "attendances_by_outcome": {
-    "completed": 540,
-    "canceled": 39,
-    "unknown": 0
-  },
-  "total_attendances": 579
+  "message": "share_path e obrigatorio para impressora compartilhada no Windows."
 }
 ```
 
-### 4) Videos
+### 5) Relatorio de atendimentos (admin/superadmin)
 
-#### GET `/api/videos` (Public)
+`GET /api/reports/attendances?start_date=2026-04-01&end_date=2026-04-14`
 
-Lists uploaded MP4 files.
+Parametros obrigatorios:
 
-Success `200`:
+- `start_date` (`Y-m-d`)
+- `end_date` (`Y-m-d`, maior ou igual a `start_date`)
 
-```json
-[
-  {
-    "filename": "video_abcd1234efgh5678.mp4",
-    "url": "http://localhost:8000/storage/videos/video_abcd1234efgh5678.mp4"
-  }
-]
-```
+Escopo:
 
-#### GET `/api/videos/{filename}` (Public)
+- Sempre filtrado pela localidade do usuario autenticado (admin ou superadmin)
+- Consolida dados de `tickets` + `ticket_archives`
 
-Streams video file (`Content-Type: video/mp4`).
+Retorna metricas como:
 
-If file does not exist, returns `404`:
+- periodo
+- tempo medio de espera
+- media de atendimentos por dia
+- atendimentos por dia
+- atendimentos por tipo
+- atendimentos por resultado (`completed`, `canceled`, `unknown`)
+- atendimentos por guiche
+- atendimentos por usuario
+- total de atendimentos
 
-```json
-{
-  "message": "Video not found"
-}
-```
+### 6) Videos
 
-#### POST `/api/videos/upload` (Admin)
+`POST /api/videos/upload` (superadmin, multipart/form-data):
 
-Uploads an MP4 video.
+- campo `video`: obrigatorio, MIME `video/mp4`
 
-Request type: `multipart/form-data`
-
-Fields:
-
-- `video`: required file, MIME must be `video/mp4`
-
-Success `201`:
+Resposta `201`:
 
 ```json
 {
   "message": "Video uploaded successfully",
-  "filename": "video_abcd1234efgh5678.mp4",
-  "url": "http://localhost:8000/storage/videos/video_abcd1234efgh5678.mp4"
+  "filename": "video_abc123.mp4",
+  "url": "/storage/videos/video_abc123.mp4"
 }
 ```
 
-#### DELETE `/api/videos/{filename}` (Admin)
+`GET /api/videos`:
 
-Deletes a video by filename.
+- Lista arquivos mp4 com `filename` e `url`
 
-Success `200`:
+`GET /api/videos/{filename}`:
 
-```json
-{
-  "message": "Video deleted successfully"
-}
-```
+- Stream inline de mp4
 
-If file does not exist, returns `404`:
+`DELETE /api/videos/{filename}` (superadmin):
 
-```json
-{
-  "message": "Video not found"
-}
-```
+- Remove video
+- Se nao existir: `404` com `Video not found`
 
-### 5) User Management (Admin)
+### 7) Usuarios (superadmin)
 
-#### GET `/api/users` (Admin)
+#### GET `/api/users`
 
-Returns all users sorted by name.
+Retorna usuarios do local do superadmin logado.
 
-Success `200`: array of users with these fields:
+#### PATCH `/api/users/{user}`
 
-- `id`
-- `uuid`
-- `name`
-- `login`
-- `active`
-- `is_admin`
-- `created_at`
-- `updated_at`
-
-#### PATCH `/api/users/{user}` (Admin)
-
-Updates one user. `{user}` is the user ID (route model binding).
-
-Request body (all optional):
+Body opcional:
 
 ```json
 {
-  "name": "Desk 02",
-  "login": "desk_02",
+  "name": "Guiche 02",
+  "login": "guiche_02",
   "password": "newsecret123",
   "password_confirmation": "newsecret123",
   "active": true
 }
 ```
 
-Validation rules:
+Regras:
 
-- `name`: sometimes, string, max 255
-- `login`: sometimes, string, max 100, unique except current user
-- `password`: sometimes, string, min 8, confirmed
-- `active`: sometimes, boolean
+- login normalizado para minusculo
+- login unico dentro do local
+- tentativa de mexer em usuario de outro local retorna `404`
 
-Success `200`:
+#### DELETE `/api/users/{user}`
 
-```json
-{
-  "message": "User updated successfully",
-  "user": {
-    "id": 2,
-    "uuid": "95ef5071-0399-483d-bec5-ed83f3acbeb6",
-    "name": "Desk 02",
-    "login": "desk_02",
-    "active": true,
-    "is_admin": false,
-    "created_at": "2026-03-13T11:11:42.000000Z",
-    "updated_at": "2026-03-13T11:26:00.000000Z"
-  }
-}
-```
+- Remove usuario do mesmo local
+- Bloqueia remocao do ultimo admin do local (`422`)
 
-#### DELETE `/api/users/{user}` (Admin)
+#### PATCH `/api/users/{user}/make-admin`
 
-Deletes a user.
+- Promove usuario do mesmo local para admin
 
-Success `200`:
+#### PATCH `/api/users/{user}/remove-admin`
 
-```json
-{
-  "message": "User deleted successfully"
-}
-```
+- Remove privilegio admin
+- Bloqueia se for o ultimo admin do local (`422`)
 
-Business rule `422` when trying to delete the last admin:
-
-```json
-{
-  "message": "Cannot delete the last administrator"
-}
-```
-
-#### PATCH `/api/users/{user}/make-admin` (Admin)
-
-Promotes user to admin.
-
-Success `200`:
-
-```json
-{
-  "message": "User promoted to administrator successfully",
-  "user": {
-    "id": 2,
-    "uuid": "95ef5071-0399-483d-bec5-ed83f3acbeb6",
-    "name": "Desk 02",
-    "login": "desk_02",
-    "active": true,
-    "is_admin": true,
-    "created_at": "2026-03-13T11:11:42.000000Z",
-    "updated_at": "2026-03-13T11:26:00.000000Z"
-  }
-}
-```
-
-If already admin, still returns `200` with current user data and message.
-
-#### PATCH `/api/users/{user}/remove-admin` (Admin)
-
-Removes admin role.
-
-Success `200`:
-
-```json
-{
-  "message": "Administrator access removed successfully",
-  "user": {
-    "id": 2,
-    "uuid": "95ef5071-0399-483d-bec5-ed83f3acbeb6",
-    "name": "Desk 02",
-    "login": "desk_02",
-    "active": true,
-    "is_admin": false,
-    "created_at": "2026-03-13T11:11:42.000000Z",
-    "updated_at": "2026-03-13T11:26:00.000000Z"
-  }
-}
-```
-
-If user is not admin, returns `200` with a message.
-
-Business rule `422` when trying to remove admin from the last admin user:
-
-```json
-{
-  "message": "Cannot remove administrator access from the last administrator"
-}
-```
-
-## Common Error Responses
+## Codigos de erro comuns
 
 ### 401 Unauthorized
 
-Missing or invalid API key:
+- API key ausente/invalida
+- token ausente/invalido em rota protegida
 
-```json
-{
-  "message": "Unauthorized: Invalid or missing API Key"
-}
-```
-
-Missing or invalid Bearer token on Auth/Admin routes:
+Exemplo:
 
 ```json
 {
@@ -657,7 +502,7 @@ Missing or invalid Bearer token on Auth/Admin routes:
 
 ### 403 Forbidden
 
-Authenticated user is not admin on Admin routes:
+Usuario autenticado sem perfil de acesso exigido:
 
 ```json
 {
@@ -665,21 +510,30 @@ Authenticated user is not admin on Admin routes:
 }
 ```
 
-### 404 Not Found
-
-Example:
+Ou, em rotas exclusivas de superadmin:
 
 ```json
 {
-  "message": "Video not found"
+  "message": "Forbidden: super administrator access required"
 }
 ```
 
+### 404 Not Found
+
+- recurso nao encontrado
+- acesso a recurso de outra localidade (em rotas com model binding ou lookup local)
+
 ### 422 Unprocessable Entity
 
-Used for validation errors and business rule violations.
+Erros de validacao ou regra de negocio.
 
-Example:
+Exemplos:
+
+```json
+{
+  "message": "Local invalido. Use campus ou centro."
+}
+```
 
 ```json
 {
@@ -687,12 +541,38 @@ Example:
 }
 ```
 
-## Operational Notes
+## Operacao e manutencao
 
-- Completed tickets from previous days are archived daily at `00:05` by scheduled command `tickets:archive-completed`.
-- Attendance reports merge current tickets and archived tickets.
-- API errors for `/api/*` are always returned as JSON.
+### Arquivamento de tickets finalizados
 
-## License
+Existe comando:
 
-Proprietary - Unilab.
+```bash
+php artisan tickets:archive-completed
+```
+
+Comportamento:
+
+- Move tickets finalizados de dias anteriores para `ticket_archives`
+- Preserva localidade e dados de atendimento
+
+Agendamento:
+
+- executa diariamente as `00:05`
+- com `withoutOverlapping`
+
+### Logs uteis
+
+Falhas de impressao sao registradas em `storage/logs/laravel.log`.
+
+## Testes
+
+Rodar todos:
+
+```bash
+php artisan test
+```
+
+## Licenca
+
+Proprietario - Unilab.
