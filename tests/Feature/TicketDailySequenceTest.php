@@ -18,6 +18,7 @@ class TicketDailySequenceTest extends TestCase
 
         DB::table('tickets')->insert([
             'key' => 'N-0001',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => false,
             'created_at' => Carbon::parse('2026-04-05 10:00:00'),
@@ -30,6 +31,7 @@ class TicketDailySequenceTest extends TestCase
             ->withHeader('X-API-KEY', 'test-api-key')
             ->postJson('/api/tickets', [
                 'service_type' => 'Atendimento Normal',
+                'location' => 'campus',
             ]);
 
         $response
@@ -47,6 +49,7 @@ class TicketDailySequenceTest extends TestCase
 
         Ticket::create([
             'key' => 'N-0001',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => false,
             'created_at' => Carbon::now()->subMinute(),
@@ -57,6 +60,7 @@ class TicketDailySequenceTest extends TestCase
             ->withHeader('X-API-KEY', 'test-api-key')
             ->postJson('/api/tickets', [
                 'service_type' => 'Atendimento Normal',
+                'location' => 'campus',
             ]);
 
         $response
