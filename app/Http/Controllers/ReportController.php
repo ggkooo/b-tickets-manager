@@ -11,6 +11,8 @@ class ReportController extends Controller
 {
     public function attendances(Request $request)
     {
+        $location = $request->user()->location;
+
         $validated = $request->validate([
             'start_date' => ['required', 'date', 'date_format:Y-m-d'],
             'end_date' => ['required', 'date', 'date_format:Y-m-d', 'after_or_equal:start_date'],
@@ -22,6 +24,7 @@ class ReportController extends Controller
         $archivedAttendances = DB::table('ticket_archives')
             ->leftJoin('users', 'users.id', '=', 'ticket_archives.attended_by_user_id')
             ->selectRaw("ticket_archives.service_type, ticket_archives.guiche, ticket_archives.attended_by_user_id, users.name as attended_by_user_name, users.login as attended_by_user_login, ticket_archives.called_at, CASE WHEN ticket_archives.completion_type = 'canceled' THEN 'canceled' ELSE 'completed' END as completion_type, ticket_archives.ticket_created_at as created_reference, COALESCE(ticket_archives.completed_at, ticket_archives.ticket_updated_at) as completed_reference")
+            ->where('ticket_archives.location', $location)
             ->whereBetween(DB::raw('COALESCE(ticket_archives.completed_at, ticket_archives.ticket_updated_at)'), [$startDate, $endDate])
             ->get();
 
@@ -29,11 +32,13 @@ class ReportController extends Controller
             ->leftJoin('users', 'users.id', '=', 'tickets.attended_by_user_id')
             ->selectRaw("tickets.service_type, tickets.guiche, tickets.attended_by_user_id, users.name as attended_by_user_name, users.login as attended_by_user_login, tickets.called_at, CASE WHEN tickets.completion_type = 'canceled' THEN 'canceled' ELSE 'completed' END as completion_type, tickets.created_at as created_reference, COALESCE(tickets.completed_at, tickets.updated_at) as completed_reference")
             ->where('tickets.completed', true)
+            ->where('tickets.location', $location)
             ->whereBetween(DB::raw('COALESCE(tickets.completed_at, tickets.updated_at)'), [$startDate, $endDate])
             ->get();
 
         $users = DB::table('users')
             ->select('id', 'name', 'login')
+            ->where('location', $location)
             ->orderBy('name')
             ->get();
 
