@@ -6,6 +6,7 @@ use App\Http\Controllers\TicketController;
 use App\Http\Controllers\VideoController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\PrinterSettingsController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -21,8 +22,13 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
     Route::get('/reports/attendances', [ReportController::class, 'attendances']);
+});
+
+Route::middleware(['auth:sanctum', 'superadmin'])->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::get('/printer-settings', [PrinterSettingsController::class, 'show']);
+    Route::post('/printer-settings', [PrinterSettingsController::class, 'store']);
     Route::post('/videos/upload', [VideoController::class, 'upload']);
     Route::delete('/videos/{filename}', [VideoController::class, 'destroy']);
     Route::get('/users', [UserController::class, 'index']);
