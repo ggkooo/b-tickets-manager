@@ -15,6 +15,9 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
+    public const LOCATION_CAMPUS = 'campus';
+    public const LOCATION_CENTRO = 'centro';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -24,9 +27,11 @@ class User extends Authenticatable
         'uuid',
         'name',
         'login',
+        'location',
         'password',
         'active',
         'is_admin',
+        'is_super_admin',
     ];
 
     /**
@@ -51,6 +56,28 @@ class User extends Authenticatable
             'password' => 'hashed',
             'active' => 'boolean',
             'is_admin' => 'boolean',
+            'is_super_admin' => 'boolean',
+        ];
+    }
+
+    public function hasAdminAccess(): bool
+    {
+        return $this->is_admin || $this->is_super_admin;
+    }
+
+    public function hasSuperAdminAccess(): bool
+    {
+        return $this->is_super_admin;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function allowedLocations(): array
+    {
+        return [
+            self::LOCATION_CAMPUS,
+            self::LOCATION_CENTRO,
         ];
     }
 }
