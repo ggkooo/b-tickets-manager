@@ -28,9 +28,11 @@ class UserFactory extends Factory
             'uuid' => (string) Str::uuid(),
             'name' => fake()->name(),
             'login' => fake()->unique()->userName(),
+            'location' => User::LOCATION_CAMPUS,
             'password' => static::$password ??= Hash::make('password'),
             'active' => true,
             'is_admin' => false,
+            'is_super_admin' => false,
             'remember_token' => Str::random(10),
         ];
     }
@@ -49,6 +51,15 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'is_admin' => true,
+            'is_super_admin' => false,
+        ]);
+    }
+
+    public function superAdmin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_admin' => false,
+            'is_super_admin' => true,
         ]);
     }
 }
