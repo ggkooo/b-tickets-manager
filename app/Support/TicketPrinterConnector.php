@@ -17,9 +17,12 @@ class TicketPrinterConnector
                 throw new RuntimeException('Caminho da impressora compartilhada nao configurado em share_path.');
             }
 
+            $resolvedSharePath = self::buildSharedWindowsPath($sharePath);
+
             return [
                 'connection_type' => 'shared_windows',
-                'share_path' => self::convertUncPathToSmb($sharePath),
+                'share_path' => $resolvedSharePath,
+                'display_share_path' => self::redactCredentials($resolvedSharePath),
             ];
         }
 
@@ -58,6 +61,65 @@ class TicketPrinterConnector
             'host' => $host,
             'port' => $port,
         ];
+    }
+
+    private static function buildSharedWindowsPath(string $sharePath): string
+    {
+        $smbPath = self::convertUncPathToSmb($sharePath);
+
+        if (!str_starts_with($smbPath, 'smb://')) {
+            return $smbPath;
+        }
+
+        $parsed = parse_url($smbPath);
+
+        if ($parsed === false || !isset($parsed['host'], $parsed['path'])) {
+            throw new RuntimeException('share_path da impressora compartilhada e invalido.');
+        }
+
+        if (isset($parsed['user'])) {
+            return $smbPath;
+        }
+
+        $host = $parsed['host'];
+        $path = ltrim($parsed['path'], '/');
+        $workgroup = trim((string) config('app.printer_smb_workgroup', ''));
+
+        if ($workgroup !== '' && !str_contains($path, '/')) {
+            $path = $workgroup . '/' . $path;
+        }
+
+        $username = trim((string) config('app.printer_smb_username', ''));
+        $password = (string) config('app.printer_smb_password', '');
+
+        if ($username === '') {
+            return 'smb://' . $host . '/' . $path;
+        }
+
+        $credentials = $username;
+
+        if ($password !== '') {
+            $credentials .= ':' . $password;
+        }
+
+        return 'smb://' . $credentials . '@' . $host . '/' . $path;
+    }
+
+    public static function redactCredentials(string $sharePath): string
+    {
+        $parsed = parse_url($sharePath);
+
+        if ($parsed === false || !isset($parsed['scheme'], $parsed['host'])) {
+            return $sharePath;
+        }
+
+        $path = $parsed['path'] ?? '';
+
+        if (!isset($parsed['user'])) {
+            return $parsed['scheme'] . '://' . $parsed['host'] . $path;
+        }
+
+        return $parsed['scheme'] . '://' . '***:***@' . $parsed['host'] . $path;
     }
 
     /**
