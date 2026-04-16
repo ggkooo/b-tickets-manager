@@ -30,6 +30,9 @@ Configure no `.env`:
 
 ```dotenv
 APP_API_KEY=seu_api_key_forte
+PRINTER_SMB_USERNAME=
+PRINTER_SMB_PASSWORD=
+PRINTER_SMB_WORKGROUP=
 
 DB_CONNECTION=sqlite
 # ou mysql/pgsql...
@@ -142,6 +145,14 @@ Para `shared_windows`, o sistema aceita UNC e converte para SMB internamente:
 
 - Entrada aceita: `\\SERVIDOR\\IMPRESSORA`
 - Uso interno: `smb://SERVIDOR/IMPRESSORA`
+
+Se o servidor da aplicacao estiver em Linux com `smbclient`, voce pode informar as credenciais SMB pelo `.env`:
+
+- `PRINTER_SMB_USERNAME`
+- `PRINTER_SMB_PASSWORD`
+- `PRINTER_SMB_WORKGROUP` (opcional)
+
+Essas credenciais sao aplicadas automaticamente nas impressoes `shared_windows` em tempo de execucao. O `share_path` salvo no banco continua sendo apenas o caminho da impressora.
 
 ### Fonte de configuracao
 
