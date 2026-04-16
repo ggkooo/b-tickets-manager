@@ -9,7 +9,9 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
 use Mike42\Escpos\CapabilityProfile;
+use Mike42\Escpos\PrintConnectors\CupsPrintConnector;
 use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
+use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use Mike42\Escpos\Printer;
 use RuntimeException;
 use Throwable;
@@ -217,7 +219,7 @@ class TicketController extends Controller
     }
 
     /**
-     * Send one ticket to the configured network printer.
+     * Send one ticket to the configured printer.
      */
     private function printTicket(Ticket $ticket): void
     {
@@ -232,7 +234,12 @@ class TicketController extends Controller
         $printedAt = now(config('app.timezone'))->format('d/m/Y H:i:s');
 
         $profile = CapabilityProfile::load($profileName);
-        $connector = new NetworkPrintConnector($printerConnection['host'], $printerConnection['port']);
+        $connector = match ($printerConnection['connection']) {
+            'network' => new NetworkPrintConnector($printerConnection['host'], $printerConnection['port']),
+            'windows_share' => new WindowsPrintConnector($printerConnection['smb_uri']),
+            'cups' => new CupsPrintConnector($printerConnection['cups_queue']),
+            default => throw new RuntimeException('Tipo de conexao da impressora nao suportado.'),
+        };
         $printer = new Printer($connector, $profile);
 
         try {
