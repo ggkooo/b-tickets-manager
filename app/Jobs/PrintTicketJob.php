@@ -130,7 +130,7 @@ class PrintTicketJob implements ShouldQueue
         Log::debug('Printer connection resolved', [
             'connection_type' => $printerConnection['connection_type'],
             'path_or_host' => $printerConnection['connection_type'] === PrinterSetting::CONNECTION_SHARED_WINDOWS
-                ? $printerConnection['share_path']
+                ? ($printerConnection['display_share_path'] ?? TicketPrinterConnector::redactCredentials($printerConnection['share_path']))
                 : ($printerConnection['host'] . ':' . $printerConnection['port']),
         ]);
 
