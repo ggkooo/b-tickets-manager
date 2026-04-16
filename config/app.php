@@ -56,6 +56,12 @@ return [
 
     'api_key' => env('APP_API_KEY'),
 
+    'printer_smb_username' => env('PRINTER_SMB_USERNAME'),
+
+    'printer_smb_password' => env('PRINTER_SMB_PASSWORD'),
+
+    'printer_smb_workgroup' => env('PRINTER_SMB_WORKGROUP'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
