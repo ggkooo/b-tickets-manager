@@ -53,6 +53,244 @@ Base URL local:
 http://localhost:8000/api
 ```
 
+## Producao em Debian com Apache
+
+### Topologia recomendada
+
+- Apache como reverse proxy e balanceador na frente da aplicacao
+- Aplicacao Laravel servida por mais de um backend, se voce realmente quiser balanceamento
+- Banco, cache, sessoes e filas compartilhados entre todos os nos
+
+Se existir apenas um backend, o Apache funciona como proxy reverso, mas nao ha ganho real de balanceamento.
+
+### Modulos Apache
+
+No Debian, habilite:
+
+```bash
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+sudo a2enmod proxy_balancer
+sudo a2enmod lbmethod_byrequests
+sudo a2enmod headers
+sudo systemctl reload apache2
+```
+
+### Variaveis importantes no `.env`
+
+Exemplo minimo para producao:
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://api.exemplo.com.br
+APP_KEY=base64:...
+APP_API_KEY=uma_chave_forte
+TRUSTED_PROXIES=*
+
+SESSION_DRIVER=database
+CACHE_STORE=database
+QUEUE_CONNECTION=database
+APP_MAINTENANCE_DRIVER=cache
+APP_MAINTENANCE_STORE=database
+
+SESSION_SECURE_COOKIE=true
+SESSION_SAME_SITE=lax
+SANCTUM_STATEFUL_DOMAINS=api.exemplo.com.br,painel.exemplo.com.br
+```
+
+Observacoes:
+
+- Use a mesma `APP_KEY` em todos os nos
+- Todos os nos precisam apontar para o mesmo banco
+- Se a autenticacao for somente por Bearer token, `SANCTUM_STATEFUL_DOMAINS` pode ficar vazio
+- Se houver frontend web com cookie, configure `SESSION_DOMAIN` e `SANCTUM_STATEFUL_DOMAINS`
+
+### Exemplo de VirtualHost com balanceamento
+
+```apache
+<VirtualHost *:80>
+  ServerName api.exemplo.com.br
+
+  ProxyPreserveHost On
+  ProxyRequests Off
+
+  RequestHeader set X-Forwarded-Proto "http"
+  RequestHeader set X-Forwarded-Port "80"
+
+  <Proxy "balancer://b-unilab-cluster">
+    BalancerMember "http://127.0.0.1:8081"
+    BalancerMember "http://127.0.0.1:8082"
+    ProxySet lbmethod=byrequests
+  </Proxy>
+
+  ProxyPass "/" "balancer://b-unilab-cluster/"
+  ProxyPassReverse "/" "balancer://b-unilab-cluster/"
+</VirtualHost>
+```
+
+Se o SSL terminar no Apache, use HTTPS no VirtualHost publico e encaminhe o protocolo correto:
+
+```apache
+<VirtualHost *:443>
+  ServerName api.exemplo.com.br
+
+  SSLEngine on
+  SSLCertificateFile /etc/letsencrypt/live/api.exemplo.com.br/fullchain.pem
+  SSLCertificateKeyFile /etc/letsencrypt/live/api.exemplo.com.br/privkey.pem
+
+  ProxyPreserveHost On
+  ProxyRequests Off
+
+  RequestHeader set X-Forwarded-Proto "https"
+  RequestHeader set X-Forwarded-Port "443"
+
+  <Proxy "balancer://b-unilab-cluster">
+    BalancerMember "http://127.0.0.1:8081"
+    BalancerMember "http://127.0.0.1:8082"
+    ProxySet lbmethod=byrequests
+  </Proxy>
+
+  ProxyPass "/" "balancer://b-unilab-cluster/"
+  ProxyPassReverse "/" "balancer://b-unilab-cluster/"
+</VirtualHost>
+```
+
+### O que precisa estar correto na aplicacao
+
+- O Laravel precisa confiar nos headers `X-Forwarded-*` do Apache
+- `APP_URL` deve apontar para a URL publica final
+- Cookies de sessao devem usar `SESSION_SECURE_COOKIE=true` quando houver HTTPS
+- Sessoes, cache e filas nao podem depender de arquivo local em ambiente com multiplos nos
+
+### Atencao com arquivos e videos
+
+Os videos enviados pela API usam o disco `public` local. Em ambiente com mais de um backend, isso significa que um upload feito no no A pode nao existir no no B.
+
+Para evitar isso, use uma destas abordagens:
+
+- storage compartilhado entre os servidores
+- disco externo compativel com S3
+- apenas um backend para upload e streaming, o que reduz a vantagem do balanceamento
+
+### Atencao com o worker de impressao
+
+O job de impressao roda na fila `printing`. Em ambiente com varios nos, so devem consumir essa fila os servidores que realmente consigam acessar a impressora daquele local.
+
+Exemplo:
+
+```bash
+php artisan queue:work --queue=printing,default
+```
+
+Se um no nao tiver acesso a impressora, nao deixe esse no consumir a fila de impressao.
+
+### Deploy basico no Debian
+
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan db:seed --force
+php artisan storage:link
+php artisan config:cache
+php artisan route:cache
+php artisan queue:restart
+```
+
+### Workers de fila no Debian
+
+O Apache nao executa workers da fila. Ele atende apenas as requisicoes HTTP.
+
+Para processar filas em producao, rode os workers como servicos do sistema com `systemd`. Eles podem ficar na mesma maquina do Apache, mas devem rodar como processos separados.
+
+Nesta aplicacao, isso e importante porque:
+
+- a fila padrao processa os jobs gerais
+- a fila `printing` processa os jobs de impressao
+
+Exemplo de servico para a fila padrao:
+
+```ini
+[Unit]
+Description=B-Unilab Queue Worker Default
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/b-unilab
+ExecStart=/usr/bin/php artisan queue:work database --queue=default --sleep=3 --tries=3 --timeout=120
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Salve como `/etc/systemd/system/b-unilab-queue.service`.
+
+Exemplo de servico para a fila de impressao:
+
+```ini
+[Unit]
+Description=B-Unilab Queue Worker Printing
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/var/www/b-unilab
+ExecStart=/usr/bin/php artisan queue:work database --queue=printing --sleep=3 --tries=3 --timeout=120
+KillSignal=SIGTERM
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Salve como `/etc/systemd/system/b-unilab-printing.service`.
+
+Depois habilite e inicie os servicos:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now b-unilab-queue.service
+sudo systemctl enable --now b-unilab-printing.service
+sudo systemctl status b-unilab-queue.service
+sudo systemctl status b-unilab-printing.service
+```
+
+Para acompanhar logs:
+
+```bash
+journalctl -u b-unilab-queue.service -f
+journalctl -u b-unilab-printing.service -f
+```
+
+### Recomendacoes para ambiente com mais de um no
+
+- a fila `default` pode rodar em qualquer no da aplicacao
+- a fila `printing` so deve rodar em nos que realmente tenham acesso a impressora
+
+Se um no nao tiver acesso a impressora e consumir a fila `printing`, os jobs vao falhar.
+
+### Reinicio de workers apos deploy
+
+Depois de publicar nova versao da aplicacao, rode:
+
+```bash
+php artisan optimize:clear
+php artisan config:cache
+php artisan route:cache
+php artisan queue:restart
+```
+
+O comando `queue:restart` faz os workers recarregarem o codigo novo com seguranca.
+
 ## Seguranca e headers
 
 ### Header obrigatorio em TODAS as rotas
