@@ -111,23 +111,63 @@ class PrintTicketJob implements ShouldQueue
      */
     private function printTicket(Ticket $ticket): void
     {
-        $printerConfig = $this->resolvePrinterConfigForLocation($ticket->location);
+        $printerConfigs = $this->resolvePrinterConfigsForLocation($ticket->location);
 
-        Log::debug('Printer config resolved for location', [
+        Log::debug('Printer configs resolved for location', [
             'location' => $ticket->location,
-            'config' => [
-                'enabled' => $printerConfig['enabled'] ?? false,
+            'count' => count($printerConfigs),
+            'printers' => array_map(static fn (array $printerConfig) => [
+                'name' => $printerConfig['name'] ?? null,
                 'connection_type' => $printerConfig['connection_type'] ?? null,
-            ],
+            ], $printerConfigs),
         ]);
 
-        if (!($printerConfig['enabled'] ?? false)) {
-            throw new RuntimeException('Impressao desativada. Configure a impressora para este local.');
+        $successCount = 0;
+        $failures = [];
+
+        foreach ($printerConfigs as $printerConfig) {
+            try {
+                $this->printTicketUsingPrinterConfig($ticket, $printerConfig);
+                $successCount++;
+            } catch (Throwable $exception) {
+                $printerName = (string) ($printerConfig['name'] ?? 'Impressora sem nome');
+
+                $failures[] = $printerName . ': ' . $exception->getMessage();
+
+                Log::error('Error during ticket printing for configured printer', [
+                    'ticket_key' => $ticket->key,
+                    'location' => $ticket->location,
+                    'printer_name' => $printerName,
+                    'error' => $exception->getMessage(),
+                    'error_class' => get_class($exception),
+                ]);
+            }
         }
 
+        if ($successCount === 0) {
+            throw new RuntimeException('Falha ao imprimir em todas as impressoras habilitadas. ' . implode(' | ', $failures));
+        }
+
+        if ($failures !== []) {
+            Log::warning('Ticket printed with partial printer failures', [
+                'ticket_key' => $ticket->key,
+                'location' => $ticket->location,
+                'successful_printers' => $successCount,
+                'failed_printers' => $failures,
+            ]);
+        }
+    }
+
+    /**
+     * Print a ticket using one printer configuration.
+     */
+    private function printTicketUsingPrinterConfig(Ticket $ticket, array $printerConfig): void
+    {
         $printerConnection = TicketPrinterConnector::resolve($printerConfig);
+        $printerName = (string) ($printerConfig['name'] ?? 'Impressora sem nome');
 
         Log::debug('Printer connection resolved', [
+            'printer_name' => $printerName,
             'connection_type' => $printerConnection['connection_type'],
             'path_or_host' => $printerConnection['connection_type'] === PrinterSetting::CONNECTION_SHARED_WINDOWS
                 ? ($printerConnection['display_share_path'] ?? TicketPrinterConnector::redactCredentials($printerConnection['share_path']))
@@ -139,14 +179,18 @@ class PrintTicketJob implements ShouldQueue
         $locationLabel = $this->formatLocationLabel($ticket->location);
         $printedAt = now(config('app.timezone'))->format('d/m/Y H:i:s');
 
-        $profile = CapabilityProfile::load($profileName);
-        $connector = $printerConnection['connection_type'] === PrinterSetting::CONNECTION_SHARED_WINDOWS
-            ? new WindowsPrintConnector($printerConnection['share_path'])
-            : new NetworkPrintConnector($printerConnection['host'], $printerConnection['port']);
-        $printer = new Printer($connector, $profile);
+        $printer = null;
 
         try {
-            Log::debug('Initializing printer');
+            $profile = CapabilityProfile::load($profileName);
+            $connector = $printerConnection['connection_type'] === PrinterSetting::CONNECTION_SHARED_WINDOWS
+                ? new WindowsPrintConnector($printerConnection['share_path'])
+                : new NetworkPrintConnector($printerConnection['host'], $printerConnection['port']);
+            $printer = new Printer($connector, $profile);
+
+            Log::debug('Initializing printer', [
+                'printer_name' => $printerName,
+            ]);
             $printer->initialize();
 
             $printer->setJustification(Printer::JUSTIFY_CENTER);
@@ -185,44 +229,64 @@ class PrintTicketJob implements ShouldQueue
             Log::info('Ticket printed successfully', [
                 'ticket_key' => $ticket->key,
                 'location' => $ticket->location,
+                'printer_name' => $printerName,
             ]);
         } catch (Throwable $e) {
             Log::error('Error during ticket printing', [
                 'ticket_key' => $ticket->key,
                 'location' => $ticket->location,
+                'printer_name' => $printerName,
                 'error' => $e->getMessage(),
                 'error_class' => get_class($e),
                 'trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         } finally {
-            Log::debug('Closing printer connection');
-            $printer->close();
+            if ($printer !== null) {
+                Log::debug('Closing printer connection', [
+                    'printer_name' => $printerName,
+                ]);
+                $printer->close();
+            }
         }
     }
 
     /**
-     * Resolve printer configuration from database.
+     * Resolve enabled printer configurations from database.
      */
-    private function resolvePrinterConfigForLocation(string $location): array
+    private function resolvePrinterConfigsForLocation(string $location): array
     {
-        $databaseConfig = PrinterSetting::query()
+        $databaseConfigs = PrinterSetting::query()
             ->where('location', $location)
-            ->first();
+            ->where('enabled', true)
+            ->orderBy('name')
+            ->get();
 
-        if ($databaseConfig === null) {
+        if ($databaseConfigs->isEmpty()) {
+            $hasAnyConfiguredPrinter = PrinterSetting::query()
+                ->where('location', $location)
+                ->exists();
+
+            if ($hasAnyConfiguredPrinter) {
+                throw new RuntimeException('Impressao desativada. Habilite ao menos uma impressora para este local.');
+            }
+
             throw new RuntimeException('Impressora nao configurada para este local. Cadastre a configuracao em /api/printer-settings.');
         }
 
-        return [
-            'enabled' => $databaseConfig->enabled,
-            'connection_type' => $databaseConfig->connection_type,
-            'host' => $databaseConfig->host,
-            'port' => $databaseConfig->port,
-            'share_path' => $databaseConfig->share_path,
-            'profile' => $databaseConfig->profile,
-            'header' => $databaseConfig->header,
-        ];
+        return $databaseConfigs
+            ->map(static fn (PrinterSetting $databaseConfig): array => [
+                'id' => $databaseConfig->id,
+                'name' => $databaseConfig->name,
+                'enabled' => $databaseConfig->enabled,
+                'connection_type' => $databaseConfig->connection_type,
+                'host' => $databaseConfig->host,
+                'port' => $databaseConfig->port,
+                'share_path' => $databaseConfig->share_path,
+                'profile' => $databaseConfig->profile,
+                'header' => $databaseConfig->header,
+            ])
+            ->all();
     }
 
     /**
