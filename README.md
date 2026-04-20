@@ -451,8 +451,9 @@ Observacao: em `/api/tickets/{id}/...`, o `{id}` pode ser ID numerico ou chave (
 | Metodo | Endpoint | Descricao |
 |---|---|---|
 | POST | `/api/register` | Cadastra usuario no mesmo local do superadmin |
-| GET | `/api/printer-settings` | Le configuracao da impressora do local |
-| POST | `/api/printer-settings` | Salva configuracao da impressora do local |
+| GET | `/api/printer-settings` | Lista impressoras do local |
+| POST | `/api/printer-settings` | Cadastra uma nova impressora para o local |
+| PATCH | `/api/printer-settings/{printerSetting}` | Atualiza uma impressora e permite habilitar/desabilitar |
 | POST | `/api/videos/upload` | Upload de video mp4 |
 | DELETE | `/api/videos/{filename}` | Remove video |
 | GET | `/api/users` | Lista usuarios do local |
@@ -564,13 +565,49 @@ Observacao: a impressao e disparada de forma assincrona apos a resposta ser envi
 
 `GET /api/printer-settings`
 
-- Retorna configuracao do local do superadmin
-- Se nao existir, retorna defaults
+- Retorna as impressoras cadastradas no local do superadmin
+- Ordena com as habilitadas primeiro e depois por nome
+
+Quando nao existir nenhuma impressora cadastrada:
+
+```json
+{
+  "location": "campus",
+  "data": []
+}
+```
+
+Resposta de exemplo:
+
+```json
+{
+  "location": "campus",
+  "data": [
+    {
+      "id": 1,
+      "location": "campus",
+      "name": "Balcao 1",
+      "enabled": true,
+      "connection_type": "network",
+      "host": "10.0.0.25",
+      "port": 9100,
+      "share_path": null,
+      "profile": "simple",
+      "header": "SENHA CAMPUS",
+      "created_at": "2026-04-14T12:31:34.000000Z",
+      "updated_at": "2026-04-14T12:31:34.000000Z"
+    }
+  ]
+}
+```
+
+Status de sucesso: `200 OK`
 
 `POST /api/printer-settings`
 
 Campos:
 
+- `name` (string, obrigatorio, unico por local)
 - `enabled` (boolean, obrigatorio)
 - `connection_type` (`network` ou `shared_windows`, obrigatorio)
 - `host` (obrigatorio quando `network`)
@@ -579,10 +616,17 @@ Campos:
 - `profile` (opcional, default `simple`)
 - `header` (opcional, default `SENHA DE ATENDIMENTO`)
 
+Observacoes:
+
+- `name` precisa ser unico dentro do local do superadmin autenticado
+- `host` e `port` sao limpos quando `connection_type = shared_windows`
+- `share_path` e limpo quando `connection_type = network`
+
 Exemplo `network`:
 
 ```json
 {
+  "name": "Balcao 1",
   "enabled": true,
   "connection_type": "network",
   "host": "10.0.0.25",
@@ -592,10 +636,33 @@ Exemplo `network`:
 }
 ```
 
+Resposta de sucesso `201 Created`:
+
+```json
+{
+  "message": "Impressora cadastrada com sucesso.",
+  "data": {
+    "id": 2,
+    "location": "campus",
+    "name": "Balcao 1",
+    "enabled": true,
+    "connection_type": "network",
+    "host": "10.0.0.25",
+    "port": 9100,
+    "share_path": null,
+    "profile": "simple",
+    "header": "SENHA CAMPUS",
+    "created_at": "2026-04-20T12:31:34.000000Z",
+    "updated_at": "2026-04-20T12:31:34.000000Z"
+  }
+}
+```
+
 Exemplo `shared_windows`:
 
 ```json
 {
+  "name": "Recepcao",
   "enabled": true,
   "connection_type": "shared_windows",
   "share_path": "\\\\200.132.194.29\\EPSON-TM-T20X",
@@ -604,14 +671,15 @@ Exemplo `shared_windows`:
 }
 ```
 
-Resposta de sucesso:
+Resposta de sucesso `201 Created`:
 
 ```json
 {
-  "message": "Configuracao da impressora salva com sucesso.",
+  "message": "Impressora cadastrada com sucesso.",
   "data": {
     "id": 1,
     "location": "centro",
+    "name": "Recepcao",
     "enabled": true,
     "connection_type": "shared_windows",
     "host": null,
@@ -625,6 +693,71 @@ Resposta de sucesso:
 }
 ```
 
+`PATCH /api/printer-settings/{printerSetting}`
+
+- Aceita atualizacao parcial
+- Use este endpoint para habilitar ou desabilitar uma impressora especifica
+- A impressora precisa pertencer ao mesmo local do superadmin autenticado
+
+Exemplo para atualizar nome e cabecalho:
+
+```json
+{
+  "name": "Balcao Principal",
+  "header": "SENHA CAMPUS PRINCIPAL"
+}
+```
+
+Exemplo para desabilitar:
+
+```json
+{
+  "enabled": false
+}
+```
+
+Exemplo para trocar o tipo para `shared_windows`:
+
+```json
+{
+  "connection_type": "shared_windows",
+  "share_path": "\\\\PC-CAMPUS\\EPSON-TM-T20",
+  "enabled": true
+}
+```
+
+Resposta de sucesso `200 OK`:
+
+```json
+{
+  "message": "Configuracao da impressora atualizada com sucesso.",
+  "data": {
+    "id": 1,
+    "location": "campus",
+    "name": "Balcao Principal",
+    "enabled": false,
+    "connection_type": "network",
+    "host": "10.0.0.25",
+    "port": 9100,
+    "share_path": null,
+    "profile": "simple",
+    "header": "SENHA CAMPUS",
+    "created_at": "2026-04-20T12:31:34.000000Z",
+    "updated_at": "2026-04-20T12:45:00.000000Z"
+  }
+}
+```
+
+Resposta de erro `404 Not Found`:
+
+```json
+{
+  "message": "Impressora nao encontrada."
+}
+```
+
+Observacao: a fila de impressao tenta imprimir em todas as impressoras habilitadas do local. Se uma falhar e outra funcionar, o ticket segue como impresso e a falha parcial fica registrada no log.
+
 Erros `422` comuns:
 
 ```json
@@ -636,6 +769,17 @@ Erros `422` comuns:
 ```json
 {
   "message": "share_path e obrigatorio para impressora compartilhada no Windows."
+}
+```
+
+```json
+{
+  "message": "The name has already been taken.",
+  "errors": {
+    "name": [
+      "The name has already been taken."
+    ]
+  }
 }
 ```
 
