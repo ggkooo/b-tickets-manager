@@ -5,40 +5,99 @@ namespace App\Http\Controllers;
 use App\Models\PrinterSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class PrinterSettingsController extends Controller
 {
-    public function show(Request $request): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $location = $request->user()->location;
 
-        $setting = PrinterSetting::query()
-            ->where('location', $location)
-            ->first();
+        $settings = PrinterSetting::query()
+            ->forLocation($location)
+            ->orderByDesc('enabled')
+            ->orderBy('name')
+            ->get();
 
-        if ($setting === null) {
-            return response()->json([
-                'location' => $location,
-                'enabled' => false,
-                'connection_type' => PrinterSetting::CONNECTION_NETWORK,
-                'host' => null,
-                'port' => 9100,
-                'share_path' => null,
-                'profile' => 'simple',
-                'header' => 'SENHA DE ATENDIMENTO',
-            ]);
-        }
-
-        return response()->json($setting);
+        return response()->json([
+            'location' => $location,
+            'data' => $settings,
+        ]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $location = $request->user()->location;
 
+        $validated = $this->validatePayload($request, $location);
+        $attributes = $this->buildAttributes($validated);
+
+        $setting = PrinterSetting::query()->create([
+            'location' => $location,
+            ...$attributes,
+        ]);
+
+        return response()->json([
+            'message' => 'Impressora cadastrada com sucesso.',
+            'data' => $setting,
+        ], 201);
+    }
+
+    public function update(Request $request, int $printerSetting): JsonResponse
+    {
+        $location = $request->user()->location;
+        $setting = PrinterSetting::query()
+            ->forLocation($location)
+            ->whereKey($printerSetting)
+            ->first();
+
+        if ($setting === null) {
+            return response()->json([
+                'message' => 'Impressora nao encontrada.',
+            ], 404);
+        }
+
+        $validated = $this->validatePayload($request, $location, $setting);
+        $merged = array_merge(
+            $setting->only([
+                'name',
+                'enabled',
+                'connection_type',
+                'host',
+                'port',
+                'share_path',
+                'profile',
+                'header',
+            ]),
+            $validated
+        );
+
+        $setting->fill($this->buildAttributes($merged));
+        $setting->save();
+
+        return response()->json([
+            'message' => 'Configuracao da impressora atualizada com sucesso.',
+            'data' => $setting,
+        ]);
+    }
+
+    private function validatePayload(Request $request, string $location, ?PrinterSetting $printerSetting = null): array
+    {
         $validated = $request->validate([
-            'enabled' => ['required', 'boolean'],
-            'connection_type' => ['required', 'string', 'in:' . implode(',', PrinterSetting::allowedConnectionTypes())],
+            'name' => [
+                $printerSetting === null ? 'required' : 'sometimes',
+                'string',
+                'max:120',
+                Rule::unique('printer_settings', 'name')
+                    ->where(fn ($query) => $query->where('location', $location))
+                    ->ignore($printerSetting?->id),
+            ],
+            'enabled' => [$printerSetting === null ? 'required' : 'sometimes', 'boolean'],
+            'connection_type' => [
+                $printerSetting === null ? 'required' : 'sometimes',
+                'string',
+                'in:' . implode(',', PrinterSetting::allowedConnectionTypes()),
+            ],
             'host' => ['nullable', 'string', 'max:255'],
             'port' => ['nullable', 'integer', 'between:1,65535'],
             'share_path' => ['nullable', 'string', 'max:255'],
@@ -46,44 +105,44 @@ class PrinterSettingsController extends Controller
             'header' => ['nullable', 'string', 'max:255'],
         ]);
 
-        if ($validated['connection_type'] === PrinterSetting::CONNECTION_NETWORK) {
-            if (empty($validated['host'])) {
-                return response()->json([
-                    'message' => 'Host e obrigatorio para impressora de rede.',
-                ], 422);
-            }
+        $connectionType = $validated['connection_type'] ?? $printerSetting?->connection_type;
+        $host = trim((string) ($validated['host'] ?? $printerSetting?->host ?? ''));
+        $sharePath = trim((string) ($validated['share_path'] ?? $printerSetting?->share_path ?? ''));
+
+        if ($connectionType === PrinterSetting::CONNECTION_NETWORK && $host === '') {
+            abort(response()->json([
+                'message' => 'Host e obrigatorio para impressora de rede.',
+            ], 422));
         }
 
-        if ($validated['connection_type'] === PrinterSetting::CONNECTION_SHARED_WINDOWS) {
-            if (empty($validated['share_path'])) {
-                return response()->json([
-                    'message' => 'share_path e obrigatorio para impressora compartilhada no Windows.',
-                ], 422);
-            }
+        if ($connectionType === PrinterSetting::CONNECTION_SHARED_WINDOWS && $sharePath === '') {
+            abort(response()->json([
+                'message' => 'share_path e obrigatorio para impressora compartilhada no Windows.',
+            ], 422));
         }
 
-        $setting = PrinterSetting::query()->updateOrCreate(
-            ['location' => $location],
-            [
-                'enabled' => $validated['enabled'],
-                'connection_type' => $validated['connection_type'],
-                'host' => $validated['connection_type'] === PrinterSetting::CONNECTION_NETWORK
-                    ? trim((string) ($validated['host'] ?? ''))
-                    : null,
-                'port' => $validated['connection_type'] === PrinterSetting::CONNECTION_NETWORK
-                    ? (int) ($validated['port'] ?? 9100)
-                    : null,
-                'share_path' => $validated['connection_type'] === PrinterSetting::CONNECTION_SHARED_WINDOWS
-                    ? trim((string) ($validated['share_path'] ?? ''))
-                    : null,
-                'profile' => trim((string) ($validated['profile'] ?? 'simple')),
-                'header' => trim((string) ($validated['header'] ?? 'SENHA DE ATENDIMENTO')),
-            ]
-        );
+        return $validated;
+    }
 
-        return response()->json([
-            'message' => 'Configuracao da impressora salva com sucesso.',
-            'data' => $setting,
-        ]);
+    private function buildAttributes(array $validated): array
+    {
+        $connectionType = $validated['connection_type'];
+
+        return [
+            'name' => trim((string) $validated['name']),
+            'enabled' => (bool) $validated['enabled'],
+            'connection_type' => $connectionType,
+            'host' => $connectionType === PrinterSetting::CONNECTION_NETWORK
+                ? trim((string) ($validated['host'] ?? ''))
+                : null,
+            'port' => $connectionType === PrinterSetting::CONNECTION_NETWORK
+                ? (int) ($validated['port'] ?? 9100)
+                : null,
+            'share_path' => $connectionType === PrinterSetting::CONNECTION_SHARED_WINDOWS
+                ? trim((string) ($validated['share_path'] ?? ''))
+                : null,
+            'profile' => trim((string) ($validated['profile'] ?? 'simple')),
+            'header' => trim((string) ($validated['header'] ?? 'SENHA DE ATENDIMENTO')),
+        ];
     }
 }
