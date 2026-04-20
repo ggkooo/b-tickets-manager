@@ -33,6 +33,7 @@ class AdminAuthorizationTest extends TestCase
 
         $this->assertNotNull($user);
         $this->assertTrue($user->is_admin);
+        $this->assertTrue($user->is_super_admin);
         $this->assertTrue($user->active);
         $this->assertTrue(Hash::check('admin', $user->password));
     }
@@ -47,19 +48,42 @@ class AdminAuthorizationTest extends TestCase
         $response = $this->postJson('/api/login', [
             'login' => $user->login,
             'password' => 'secret123',
+            'location' => $user->location,
         ], $this->apiHeaders());
 
         $response
             ->assertOk()
             ->assertJsonPath('data.user.login', $user->login)
+            ->assertJsonPath('data.user.location', $user->location)
             ->assertJsonPath('data.user.is_admin', true)
+            ->assertJsonPath('data.user.is_super_admin', false)
             ->assertJsonStructure([
                 'data' => [
                     'access_token',
                     'token_type',
-                    'user' => ['id', 'uuid', 'name', 'login', 'active', 'is_admin'],
+                    'user' => ['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin'],
                 ],
             ]);
+    }
+
+    public function test_login_returns_superadmin_flag_for_superadmin_user(): void
+    {
+        $user = User::factory()->superAdmin()->create([
+            'login' => 'super.admin',
+            'password' => bcrypt('secret123'),
+        ]);
+
+        $response = $this->postJson('/api/login', [
+            'login' => $user->login,
+            'password' => 'secret123',
+            'location' => $user->location,
+        ], $this->apiHeaders());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.user.login', $user->login)
+            ->assertJsonPath('data.user.is_admin', false)
+            ->assertJsonPath('data.user.is_super_admin', true);
     }
 
     public function test_non_admin_user_cannot_access_admin_report_route(): void
@@ -102,5 +126,35 @@ class AdminAuthorizationTest extends TestCase
         ])->getJson('/api/reports/attendances?start_date=2026-03-01&end_date=2026-03-12');
 
         $response->assertOk();
+    }
+
+    public function test_superadmin_user_can_access_admin_report_route(): void
+    {
+        $user = User::factory()->superAdmin()->create();
+        $token = $user->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeaders([
+            ...$this->apiHeaders(),
+            'Authorization' => 'Bearer ' . $token,
+        ])->getJson('/api/reports/attendances?start_date=2026-03-01&end_date=2026-03-12');
+
+        $response->assertOk();
+    }
+
+    public function test_admin_cannot_access_superadmin_route(): void
+    {
+        $user = User::factory()->admin()->create();
+        $token = $user->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeaders([
+            ...$this->apiHeaders(),
+            'Authorization' => 'Bearer ' . $token,
+        ])->getJson('/api/users');
+
+        $response
+            ->assertForbidden()
+            ->assertJson([
+                'message' => 'Forbidden: super administrator access required',
+            ]);
     }
 }

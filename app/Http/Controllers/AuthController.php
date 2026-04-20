@@ -21,13 +21,28 @@ class AuthController extends Controller
     public function register(RegisterRequest $request)
     {
         $validated = $request->validated();
+        $location = $request->user()?->location;
+
+        if ($request->user() === null) {
+            return response()->json([
+                'message' => 'Unauthenticated.',
+            ], 401);
+        }
+
+        if ($location === null) {
+            return response()->json([
+                'message' => 'Usuario autenticado sem local configurado.',
+            ], 422);
+        }
 
         $user = User::create([
             'uuid' => Str::uuid(),
             'name' => $validated['name'],
             'login' => $validated['login'],
+            'location' => $location,
             'password' => Hash::make($validated['password']),
             'is_admin' => false,
+            'is_super_admin' => false,
         ]);
 
         return response()->json([
@@ -49,14 +64,22 @@ class AuthController extends Controller
     {
         $credentials = $request->validated();
 
-        if (!Auth::attempt($credentials)) {
+        $attemptCredentials = [
+            'login' => $credentials['login'],
+            'password' => $credentials['password'],
+            'location' => $credentials['location'],
+        ];
+
+        if (!Auth::attempt($attemptCredentials)) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Invalid credentials'
             ], 401);
         }
 
-        $user = User::where('login', $credentials['login'])->firstOrFail();
+        $user = User::where('login', $credentials['login'])
+            ->where('location', $credentials['location'])
+            ->firstOrFail();
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -65,7 +88,7 @@ class AuthController extends Controller
             'data' => [
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user->only(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at'])
+                'user' => $user->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at'])
             ]
         ]);
     }

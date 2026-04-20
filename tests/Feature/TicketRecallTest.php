@@ -25,6 +25,7 @@ class TicketRecallTest extends TestCase
 
         $ticket = Ticket::create([
             'key' => 'N-0001',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => false,
             'called_at' => Carbon::now()->subMinute(),
@@ -64,6 +65,7 @@ class TicketRecallTest extends TestCase
 
         $ticket = Ticket::create([
             'key' => 'N-0002',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => false,
             'called_at' => null,

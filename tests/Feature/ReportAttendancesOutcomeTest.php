@@ -36,6 +36,7 @@ class ReportAttendancesOutcomeTest extends TestCase
 
         Ticket::create([
             'key' => 'N-0001',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => true,
             'completed_at' => Carbon::parse('2026-03-12 10:00:00'),
@@ -44,6 +45,7 @@ class ReportAttendancesOutcomeTest extends TestCase
 
         Ticket::create([
             'key' => 'P-0001',
+            'location' => 'campus',
             'service_type' => 'Atendimento Preferencial',
             'completed' => true,
             'completed_at' => Carbon::parse('2026-03-12 11:00:00'),
@@ -76,6 +78,7 @@ class ReportAttendancesOutcomeTest extends TestCase
 
         Ticket::create([
             'key' => 'N-0002',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => true,
             'guiche' => $admin->name,
@@ -86,6 +89,7 @@ class ReportAttendancesOutcomeTest extends TestCase
 
         Ticket::create([
             'key' => 'N-0003',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => true,
             'guiche' => $admin->name,

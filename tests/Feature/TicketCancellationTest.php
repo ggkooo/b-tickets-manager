@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Ticket;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class TicketCancellationTest extends TestCase
@@ -14,8 +16,14 @@ class TicketCancellationTest extends TestCase
     {
         config(['app.api_key' => 'test-api-key']);
 
+        $user = User::factory()->create([
+            'location' => 'campus',
+        ]);
+        Sanctum::actingAs($user);
+
         $ticket = Ticket::create([
             'key' => 'N-0001',
+            'location' => 'campus',
             'service_type' => 'Atendimento Normal',
             'completed' => false,
         ]);

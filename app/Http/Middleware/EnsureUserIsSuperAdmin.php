@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class EnsureUserIsAdmin
+class EnsureUserIsSuperAdmin
 {
     /**
      * Handle an incoming request.
@@ -17,9 +17,9 @@ class EnsureUserIsAdmin
     {
         $user = $request->user();
 
-        if (!$user || !$user->hasAdminAccess()) {
+        if (!$user || !$user->hasSuperAdminAccess()) {
             return response()->json([
-                'message' => 'Forbidden: administrator access required',
+                'message' => 'Forbidden: super administrator access required',
             ], 403);
         }
 

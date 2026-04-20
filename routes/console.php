@@ -35,6 +35,7 @@ Artisan::command('tickets:archive-completed', function () {
                 $rows[] = [
                     'ticket_id' => $ticket->id,
                     'key' => $ticket->key,
+                    'location' => $ticket->location,
                     'service_type' => $ticket->service_type,
                     'guiche' => $ticket->guiche,
                     'attended_by_user_id' => $ticket->attended_by_user_id,

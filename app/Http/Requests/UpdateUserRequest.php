@@ -27,10 +27,22 @@ class UpdateUserRequest extends FormRequest
     public function rules(): array
     {
         $userId = $this->route('user')?->id;
+        $location = $this->user()?->location;
 
         return [
             'name' => ['sometimes', 'string', 'max:255'],
-            'login' => ['sometimes', 'string', 'max:100', Rule::unique('users', 'login')->ignore($userId)],
+            'login' => [
+                'sometimes',
+                'string',
+                'max:100',
+                Rule::unique('users', 'login')
+                    ->ignore($userId)
+                    ->where(function ($query) use ($location) {
+                        if ($location !== null) {
+                            $query->where('location', $location);
+                        }
+                    }),
+            ],
             'password' => ['sometimes', 'string', 'min:8', 'confirmed'],
             'active' => ['sometimes', 'boolean'],
         ];

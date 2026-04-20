@@ -8,22 +8,32 @@ class TicketPrinterConnector
 {
     public static function resolve(array $config): array
     {
-        $connection = trim((string) ($config['connection'] ?? 'network'));
+        $connectionType = trim((string) ($config['connection_type'] ?? 'network'));
 
-        return match ($connection) {
-            'network' => self::resolveNetworkConnection($config),
-            'windows_share' => self::resolveWindowsShareConnection($config),
-            'cups' => self::resolveCupsConnection($config),
-            default => throw new RuntimeException('Tipo de conexao da impressora invalido em TICKET_PRINTER_CONNECTION.'),
-        };
-    }
+        if ($connectionType === 'shared_windows') {
+            $sharePath = trim((string) ($config['share_path'] ?? ''));
 
-    private static function resolveNetworkConnection(array $config): array
-    {
+            if ($sharePath === '') {
+                throw new RuntimeException('Caminho da impressora compartilhada nao configurado em share_path.');
+            }
+
+            $resolvedSharePath = self::buildSharedWindowsPath($sharePath);
+
+            return [
+                'connection_type' => 'shared_windows',
+                'share_path' => $resolvedSharePath,
+                'display_share_path' => self::redactCredentials($resolvedSharePath),
+            ];
+        }
+
+        if ($connectionType !== 'network') {
+            throw new RuntimeException('Tipo de conexao de impressora invalido.');
+        }
+
         $host = trim((string) ($config['host'] ?? ''));
 
         if ($host === '') {
-            throw new RuntimeException('Host da impressora nao configurado em TICKET_PRINTER_HOST.');
+            throw new RuntimeException('Host da impressora nao configurado.');
         }
 
         $portRaw = $config['port'] ?? 9100;
@@ -37,55 +47,103 @@ class TicketPrinterConnector
         }
 
         if (!is_numeric($portRaw)) {
-            throw new RuntimeException('Porta da impressora invalida em TICKET_PRINTER_PORT.');
+            throw new RuntimeException('Porta da impressora invalida.');
         }
 
         $port = (int) $portRaw;
 
         if ($port < 1 || $port > 65535) {
-            throw new RuntimeException('Porta da impressora invalida em TICKET_PRINTER_PORT.');
+            throw new RuntimeException('Porta da impressora invalida.');
         }
 
         return [
-            'connection' => 'network',
+            'connection_type' => 'network',
             'host' => $host,
             'port' => $port,
         ];
     }
 
-    private static function resolveWindowsShareConnection(array $config): array
+    private static function buildSharedWindowsPath(string $sharePath): string
     {
-        if (PHP_OS === 'Darwin') {
-            throw new RuntimeException('Impressora compartilhada do Windows nao e suportada diretamente no macOS. Use o modo cups com uma fila CUPS local.');
+        $smbPath = self::convertUncPathToSmb($sharePath);
+
+        if (!str_starts_with($smbPath, 'smb://')) {
+            return $smbPath;
         }
 
-        $uri = trim((string) ($config['smb_uri'] ?? ''));
+        $parsed = parse_url($smbPath);
 
-        if ($uri === '') {
-            throw new RuntimeException('URI da impressora compartilhada nao configurada em TICKET_PRINTER_SMB_URI.');
+        if ($parsed === false || !isset($parsed['host'], $parsed['path'])) {
+            throw new RuntimeException('share_path da impressora compartilhada e invalido.');
         }
 
-        if (!preg_match('/^smb:\/\/.+\/.+$/', $uri)) {
-            throw new RuntimeException('URI da impressora compartilhada invalida em TICKET_PRINTER_SMB_URI. Use o formato smb://servidor/impressora.');
+        if (isset($parsed['user'])) {
+            return $smbPath;
         }
 
-        return [
-            'connection' => 'windows_share',
-            'smb_uri' => $uri,
-        ];
+        $host = $parsed['host'];
+        $path = ltrim($parsed['path'], '/');
+        $workgroup = trim((string) config('app.printer_smb_workgroup', ''));
+
+        if ($workgroup !== '' && !str_contains($path, '/')) {
+            $path = $workgroup . '/' . $path;
+        }
+
+        $username = trim((string) config('app.printer_smb_username', ''));
+        $password = (string) config('app.printer_smb_password', '');
+
+        if ($username === '') {
+            return 'smb://' . $host . '/' . $path;
+        }
+
+        $credentials = $username;
+
+        if ($password !== '') {
+            $credentials .= ':' . $password;
+        }
+
+        return 'smb://' . $credentials . '@' . $host . '/' . $path;
     }
 
-    private static function resolveCupsConnection(array $config): array
+    public static function redactCredentials(string $sharePath): string
     {
-        $queue = trim((string) ($config['cups_queue'] ?? ''));
+        $parsed = parse_url($sharePath);
 
-        if ($queue === '') {
-            throw new RuntimeException('Fila CUPS da impressora nao configurada em TICKET_PRINTER_CUPS_QUEUE.');
+        if ($parsed === false || !isset($parsed['scheme'], $parsed['host'])) {
+            return $sharePath;
         }
 
-        return [
-            'connection' => 'cups',
-            'cups_queue' => $queue,
-        ];
+        $path = $parsed['path'] ?? '';
+
+        if (!isset($parsed['user'])) {
+            return $parsed['scheme'] . '://' . $parsed['host'] . $path;
+        }
+
+        return $parsed['scheme'] . '://' . '***:***@' . $parsed['host'] . $path;
+    }
+
+    /**
+     * Converte um caminho UNC (\\computer\printer) para formato SMB (smb://computer/printer)
+     * necessário pelo WindowsPrintConnector da biblioteca escpos
+     */
+    private static function convertUncPathToSmb(string $uncPath): string
+    {
+        // Remove espaços em branco
+        $uncPath = trim($uncPath);
+
+        // Se já está em formato SMB, retorna como está
+        if (str_starts_with($uncPath, 'smb://')) {
+            return $uncPath;
+        }
+
+        // Remove barras invertidas do início (\\)
+        if (str_starts_with($uncPath, '\\\\')) {
+            $uncPath = substr($uncPath, 2);
+        }
+
+        // Replace a primeira barra invertida por barra normal
+        $smbPath = str_replace('\\', '/', $uncPath);
+
+        return 'smb://' . $smbPath;
     }
 }

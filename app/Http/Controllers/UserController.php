@@ -12,15 +12,20 @@ class UserController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $location = $request->user()->location;
+
         $users = User::query()
+            ->where('location', $location)
             ->orderBy('name')
-            ->get(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at']);
+            ->get(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']);
 
         return response()->json($users);
     }
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
+        $this->abortIfDifferentLocation($request, $user);
+
         $validated = $request->validated();
 
         $payload = [
@@ -37,13 +42,21 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'User updated successfully',
-            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at']),
+            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
         ]);
     }
 
-    public function destroy(User $user): JsonResponse
+    public function destroy(Request $request, User $user): JsonResponse
     {
-        if ($user->is_admin && User::where('is_admin', true)->count() === 1) {
+        $this->abortIfDifferentLocation($request, $user);
+
+        if ($user->is_super_admin && User::where('is_super_admin', true)->where('location', $request->user()->location)->count() === 1) {
+            return response()->json([
+                'message' => 'Cannot delete the last super administrator',
+            ], 422);
+        }
+
+        if ($user->is_admin && User::where('is_admin', true)->where('location', $request->user()->location)->count() === 1) {
             return response()->json([
                 'message' => 'Cannot delete the last administrator',
             ], 422);
@@ -56,13 +69,21 @@ class UserController extends Controller
         ]);
     }
 
-    public function makeAdmin(User $user): JsonResponse
+    public function makeAdmin(Request $request, User $user): JsonResponse
     {
+        $this->abortIfDifferentLocation($request, $user);
+
         if ($user->is_admin) {
             return response()->json([
                 'message' => 'User is already an administrator',
-                'user' => $user->only(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at']),
+                'user' => $user->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
             ]);
+        }
+
+        if ($user->is_super_admin) {
+            return response()->json([
+                'message' => 'Super administrator role cannot be changed through this route.',
+            ], 422);
         }
 
         $user->update([
@@ -71,20 +92,28 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'User promoted to administrator successfully',
-            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at']),
+            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
         ]);
     }
 
-    public function removeAdmin(User $user): JsonResponse
+    public function removeAdmin(Request $request, User $user): JsonResponse
     {
+        $this->abortIfDifferentLocation($request, $user);
+
         if (!$user->is_admin) {
             return response()->json([
                 'message' => 'User is not an administrator',
-                'user' => $user->only(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at']),
+                'user' => $user->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
             ]);
         }
 
-        if (User::where('is_admin', true)->count() === 1) {
+        if ($user->is_super_admin) {
+            return response()->json([
+                'message' => 'Super administrator role cannot be changed through this route.',
+            ], 422);
+        }
+
+        if (User::where('is_admin', true)->where('location', $request->user()->location)->count() === 1) {
             return response()->json([
                 'message' => 'Cannot remove administrator access from the last administrator',
             ], 422);
@@ -96,7 +125,14 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'Administrator access removed successfully',
-            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'active', 'is_admin', 'created_at', 'updated_at']),
+            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
         ]);
+    }
+
+    private function abortIfDifferentLocation(Request $request, User $user): void
+    {
+        if ($user->location !== $request->user()->location) {
+            abort(404);
+        }
     }
 }

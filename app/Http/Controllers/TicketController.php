@@ -2,25 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Support\TicketPrinterConnector;
+use App\Jobs\PrintTicketJob;
 use Illuminate\Http\Request;
 use App\Models\Ticket;
+use App\Models\User;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
-use Mike42\Escpos\CapabilityProfile;
-use Mike42\Escpos\PrintConnectors\CupsPrintConnector;
-use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
-use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
-use Mike42\Escpos\Printer;
-use RuntimeException;
-use Throwable;
 
 class TicketController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $location = $this->resolveLocation($request);
+
         $tickets = Ticket::where('completed', false)
+            ->where('location', $location)
             ->whereNull('called_at')
             ->orderByRaw("CASE WHEN service_type = 'Atendimento Preferencial' THEN 0 ELSE 1 END")
             ->orderBy('created_at', 'asc')
@@ -29,9 +25,12 @@ class TicketController extends Controller
         return response()->json($tickets);
     }
 
-    public function recentlyCalled()
+    public function recentlyCalled(Request $request)
     {
+        $location = $this->resolveLocation($request);
+
         $tickets = Ticket::whereNotNull('called_at')
+            ->where('location', $location)
             ->orderBy('called_at', 'desc')
             ->limit(5)
             ->get();
@@ -39,9 +38,12 @@ class TicketController extends Controller
         return response()->json($tickets);
     }
 
-    public function completed()
+    public function completed(Request $request)
     {
+        $location = $request->user()->location;
+
         $tickets = Ticket::where('completed', true)
+            ->where('location', $location)
             ->where(function ($query) {
                 $query->whereDate('completed_at', Carbon::today())
                     ->orWhere(function ($fallback) {
@@ -58,6 +60,8 @@ class TicketController extends Controller
 
     public function store(Request $request)
     {
+        $location = $this->resolveLocation($request);
+
         $validated = $request->validate([
             'service_type' => 'required|string|in:Atendimento Normal,Atendimento Preferencial,Retirada de Exames ou Entrega de Amostras',
         ]);
@@ -75,12 +79,13 @@ class TicketController extends Controller
 
         while ($ticket === null && $attempts < 5) {
             $attempts++;
-            $sequence = $this->nextSequenceForPrefix($prefix);
+            $sequence = $this->nextSequenceForPrefix($prefix, $location);
             $key = sprintf('%s-%04d', $prefix, $sequence);
 
             try {
                 $ticket = Ticket::create([
                     'key'          => $key,
+                    'location'     => $location,
                     'service_type' => $type,
                     'completed'    => false,
                 ]);
@@ -98,31 +103,15 @@ class TicketController extends Controller
             ], 500);
         }
 
-        try {
-            $this->printTicket($ticket);
+        // Despacha impressao para a queue (retorna imediatamente ao cliente)
+        PrintTicketJob::dispatch($ticket);
 
-            return response()->json([
-                'ticket' => $ticket,
-                'print' => [
-                    'status' => 'sucesso',
-                ],
-            ], 201);
-        } catch (Throwable $e) {
-            Log::error('Ticket criado, mas falhou na impressao automatica.', [
-                'ticket_id' => $ticket->id,
-                'ticket_key' => $ticket->key,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'ticket' => $ticket,
-                'print' => [
-                    'status' => 'erro',
-                    'message' => 'Ticket gerado, mas nao foi possivel imprimir automaticamente.',
-                    'error' => $e->getMessage(),
-                ],
-            ], 201);
-        }
+        return response()->json([
+            'ticket' => $ticket,
+            'print' => [
+                'status' => 'enviando',
+            ],
+        ], 201);
     }
 
     /**
@@ -132,7 +121,7 @@ class TicketController extends Controller
      */
     public function call(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id);
+        $ticket = $this->resolveTicket($id, $request->user()->location);
 
         if ($ticket->called_at) {
             return response()->json([
@@ -156,7 +145,7 @@ class TicketController extends Controller
      */
     public function recall(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id);
+        $ticket = $this->resolveTicket($id, $request->user()->location);
 
         if (!$ticket->called_at) {
             return response()->json([
@@ -181,9 +170,9 @@ class TicketController extends Controller
         return response()->json($ticket);
     }
 
-    public function complete($id)
+    public function complete(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id);
+        $ticket = $this->resolveTicket($id, $request->user()->location);
         $ticket->update([
             'completed' => true,
             'completed_at' => Carbon::now(),
@@ -193,9 +182,9 @@ class TicketController extends Controller
         return response()->json($ticket);
     }
 
-    public function cancel($id)
+    public function cancel(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id);
+        $ticket = $this->resolveTicket($id, $request->user()->location);
         $ticket->update([
             'completed' => true,
             'completed_at' => Carbon::now(),
@@ -208,89 +197,31 @@ class TicketController extends Controller
     /**
      * Resolve a ticket by numeric ID or by key (e.g. "P-QS1T").
      */
-    private function resolveTicket(string|int $identifier): Ticket
+    private function resolveTicket(string|int $identifier, string $location): Ticket
     {
         return is_numeric($identifier)
-            ? Ticket::findOrFail($identifier)
-            : Ticket::where('key', $identifier)
+            ? Ticket::where('location', $location)->findOrFail($identifier)
+            : Ticket::where('location', $location)
+                ->where('key', $identifier)
                 ->orderBy('created_at', 'desc')
                 ->orderBy('id', 'desc')
                 ->firstOrFail();
     }
 
-    /**
-     * Send one ticket to the configured printer.
-     */
-    private function printTicket(Ticket $ticket): void
-    {
-        if (!config('services.ticket_printer.enabled', false)) {
-            throw new RuntimeException('Impressao desativada. Ative TICKET_PRINTER_ENABLED=true no .env.');
-        }
 
-        $printerConnection = TicketPrinterConnector::resolve(config('services.ticket_printer', []));
-
-        $profileName = config('services.ticket_printer.profile', 'simple');
-        $header = config('services.ticket_printer.header', 'SENHA DE ATENDIMENTO');
-        $printedAt = now(config('app.timezone'))->format('d/m/Y H:i:s');
-
-        $profile = CapabilityProfile::load($profileName);
-        $connector = match ($printerConnection['connection']) {
-            'network' => new NetworkPrintConnector($printerConnection['host'], $printerConnection['port']),
-            'windows_share' => new WindowsPrintConnector($printerConnection['smb_uri']),
-            'cups' => new CupsPrintConnector($printerConnection['cups_queue']),
-            default => throw new RuntimeException('Tipo de conexao da impressora nao suportado.'),
-        };
-        $printer = new Printer($connector, $profile);
-
-        try {
-            $printer->initialize();
-            $printer->setJustification(Printer::JUSTIFY_CENTER);
-
-            $printer->text("================================\n");
-            $printer->setEmphasis(true);
-            $printer->text($header . "\n");
-            $printer->setEmphasis(false);
-            $printer->text("================================\n");
-
-            $printer->feed();
-            $printer->selectPrintMode(Printer::MODE_DOUBLE_WIDTH);
-            $printer->text("SENHA\n");
-            $printer->selectPrintMode();
-
-            $printer->setTextSize(4, 4);
-            $printer->text($ticket->key . "\n");
-            $printer->setTextSize(1, 1);
-
-            $printer->feed();
-
-            $printer->text("TIPO DE ATENDIMENTO\n");
-            $printer->setEmphasis(true);
-            $printer->text($ticket->service_type . "\n");
-            $printer->setEmphasis(false);
-
-            $printer->text("Data/Hora: " . $printedAt . "\n");
-            $printer->text("--------------------------------\n");
-
-            $printer->text("Por favor, aguarde sua vez.\n");
-            $printer->feed(2);
-
-            $printer->cut();
-        } finally {
-            $printer->close();
-        }
-    }
 
     /**
      * Get next sequence for one prefix (N, P, E, R).
      *
      * This sequence resets daily per prefix (e.g. N-0001 every new day).
      */
-    private function nextSequenceForPrefix(string $prefix): int
+    private function nextSequenceForPrefix(string $prefix, string $location): int
     {
         $pattern = '/^' . preg_quote($prefix, '/') . '-(\d+)$/';
         $today = Carbon::today();
 
         $maxSequence = Ticket::whereDate('created_at', $today)
+            ->where('location', $location)
             ->where('key', 'like', $prefix . '-%')
             ->pluck('key')
             ->map(function (string $key) use ($pattern): ?int {
@@ -304,5 +235,23 @@ class TicketController extends Controller
             ->max();
 
         return ($maxSequence ?? 0) + 1;
+    }
+
+    private function resolveLocation(Request $request): string
+    {
+        if ($request->user()) {
+            return $request->user()->location;
+        }
+
+        $rawLocation = $request->input('location', $request->header('X-UNILAB-LOCATION'));
+        $location = strtolower(trim((string) $rawLocation));
+
+        if (!in_array($location, User::allowedLocations(), true)) {
+            abort(response()->json([
+                'message' => 'Local invalido. Use campus ou centro.',
+            ], 422));
+        }
+
+        return $location;
     }
 }

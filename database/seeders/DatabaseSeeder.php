@@ -17,14 +17,18 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::query()->updateOrCreate([
-            'login' => 'admin',
-        ], [
-            'uuid' => (string) Str::uuid(),
-            'name' => 'Administrador',
-            'password' => Hash::make('admin'),
-            'active' => true,
-            'is_admin' => true,
-        ]);
+        foreach (User::allowedLocations() as $location) {
+            User::query()->updateOrCreate([
+                'login' => 'admin',
+                'location' => $location,
+            ], [
+                'uuid' => (string) Str::uuid(),
+                'name' => 'Administrador',
+                'password' => Hash::make('admin'),
+                'active' => true,
+                'is_admin' => true,
+                'is_super_admin' => true,
+            ]);
+        }
     }
 }
