@@ -11,6 +11,7 @@ class PrinterSetting extends Model
 
     protected $fillable = [
         'location',
+        'name',
         'enabled',
         'connection_type',
         'host',
@@ -24,6 +25,11 @@ class PrinterSetting extends Model
         'enabled' => 'boolean',
         'port' => 'integer',
     ];
+
+    public function scopeForLocation($query, string $location)
+    {
+        return $query->where('location', $location);
+    }
 
     /**
      * @return array<int, string>
