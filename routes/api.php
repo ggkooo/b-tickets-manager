@@ -27,8 +27,9 @@ Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
 Route::middleware(['auth:sanctum', 'superadmin'])->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
-    Route::get('/printer-settings', [PrinterSettingsController::class, 'show']);
+    Route::get('/printer-settings', [PrinterSettingsController::class, 'index']);
     Route::post('/printer-settings', [PrinterSettingsController::class, 'store']);
+    Route::patch('/printer-settings/{printerSetting}', [PrinterSettingsController::class, 'update']);
     Route::post('/videos/upload', [VideoController::class, 'upload']);
     Route::delete('/videos/{filename}', [VideoController::class, 'destroy']);
     Route::get('/users', [UserController::class, 'index']);
