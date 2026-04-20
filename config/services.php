@@ -37,8 +37,11 @@ return [
 
     'ticket_printer' => [
         'enabled' => env('TICKET_PRINTER_ENABLED', false),
+        'connection' => env('TICKET_PRINTER_CONNECTION', 'network'),
         'host' => env('TICKET_PRINTER_HOST'),
         'port' => env('TICKET_PRINTER_PORT', 9100),
+        'smb_uri' => env('TICKET_PRINTER_SMB_URI'),
+        'cups_queue' => env('TICKET_PRINTER_CUPS_QUEUE'),
         'profile' => env('TICKET_PRINTER_PROFILE', 'simple'),
         'header' => env('TICKET_PRINTER_HEADER', 'SENHA DE ATENDIMENTO'),
     ],
