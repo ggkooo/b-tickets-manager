@@ -853,7 +853,6 @@ Body opcional:
   "name": "Guiche 02",
   "login": "guiche_02",
   "password": "newsecret123",
-  "password_confirmation": "newsecret123",
   "active": true
 }
 ```
