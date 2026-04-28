@@ -20,6 +20,10 @@ class PrintTicketJob implements ShouldQueue
 {
     use Queueable;
 
+    public int $tries = 3;
+
+    public array $backoff = [60, 300]; // 1 minuto, depois 5 minutos antes dos retries
+
     private Ticket $ticket;
 
     /**
@@ -29,8 +33,6 @@ class PrintTicketJob implements ShouldQueue
     {
         $this->ticket = $ticket;
         $this->queue = 'printing';
-        $this->tries = 3;
-        $this->backoff = [60, 300]; // 1 minuto, depois 5 minutos antes dos retries
     }
 
     /**
@@ -74,22 +76,12 @@ class PrintTicketJob implements ShouldQueue
                 'ticket_key' => $this->ticket->key,
                 'location' => $this->ticket->location,
                 'attempt' => $this->attempts(),
+                'max_tries' => $this->tries,
                 'error' => $e->getMessage(),
                 'error_class' => get_class($e),
             ]);
 
-            // Se já tentou 3 vezes, falha definitivamente. Caso contrário, retry.
-            if ($this->attempts() < 3) {
-                $this->release(60 + ($this->attempts() * 60)); // Delay maior a cada retry
-            } else {
-                Log::critical('Falha definitiva ao imprimir ticket apos 3 tentativas', [
-                    'ticket_id' => $this->ticket->id,
-                    'ticket_key' => $this->ticket->key,
-                    'location' => $this->ticket->location,
-                    'final_error' => $e->getMessage(),
-                ]);
-                throw $e;
-            }
+            throw $e;
         }
     }
 
