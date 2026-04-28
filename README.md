@@ -244,7 +244,7 @@ Group=www-data
 Restart=always
 RestartSec=5
 WorkingDirectory=/var/www/b-unilab
-ExecStart=/usr/bin/php artisan queue:work database --queue=printing --sleep=3 --tries=3 --timeout=120
+ExecStart=/usr/bin/php artisan queue:work database --queue=printing --sleep=3 --tries=6 --timeout=120
 KillSignal=SIGTERM
 TimeoutStopSec=60
 
