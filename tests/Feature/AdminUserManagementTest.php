@@ -83,7 +83,6 @@ class AdminUserManagementTest extends TestCase
             'name' => 'Updated User',
             'login' => 'updated.user',
             'password' => 'newsecret123',
-            'password_confirmation' => 'newsecret123',
             'active' => false,
         ]);
 

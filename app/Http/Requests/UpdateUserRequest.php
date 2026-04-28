@@ -43,7 +43,7 @@ class UpdateUserRequest extends FormRequest
                         }
                     }),
             ],
-            'password' => ['sometimes', 'string', 'min:8', 'confirmed'],
+            'password' => ['sometimes', 'string', 'min:8'],
             'active' => ['sometimes', 'boolean'],
         ];
     }
