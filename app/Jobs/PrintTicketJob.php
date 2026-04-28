@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Support\TicketPrinterConnector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\MaxAttemptsExceededException;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Facades\Log;
 use Mike42\Escpos\CapabilityProfile;
@@ -20,6 +21,15 @@ class PrintTicketJob implements ShouldQueue
 {
     use Queueable;
 
+    public int $tries = 6;
+
+    /**
+     * Backoff progressive para indisponibilidade temporaria de impressora/rede.
+     *
+     * @var array<int, int>
+     */
+    public array $backoff = [60, 180, 300, 600, 900];
+
     private Ticket $ticket;
 
     /**
@@ -29,8 +39,6 @@ class PrintTicketJob implements ShouldQueue
     {
         $this->ticket = $ticket;
         $this->queue = 'printing';
-        $this->tries = 3;
-        $this->backoff = [60, 300]; // 1 minuto, depois 5 minutos antes dos retries
     }
 
     /**
@@ -42,7 +50,9 @@ class PrintTicketJob implements ShouldQueue
     {
         return [
             // Garante que apenas um job de impressão por local é processado por vez
-            new WithoutOverlapping("printer-location:{$this->ticket->location}"),
+            (new WithoutOverlapping("printer-location:{$this->ticket->location}"))
+                ->releaseAfter(15)
+                ->expireAfter(180),
         ];
     }
 
@@ -78,18 +88,7 @@ class PrintTicketJob implements ShouldQueue
                 'error_class' => get_class($e),
             ]);
 
-            // Se já tentou 3 vezes, falha definitivamente. Caso contrário, retry.
-            if ($this->attempts() < 3) {
-                $this->release(60 + ($this->attempts() * 60)); // Delay maior a cada retry
-            } else {
-                Log::critical('Falha definitiva ao imprimir ticket apos 3 tentativas', [
-                    'ticket_id' => $this->ticket->id,
-                    'ticket_key' => $this->ticket->key,
-                    'location' => $this->ticket->location,
-                    'final_error' => $e->getMessage(),
-                ]);
-                throw $e;
-            }
+            throw $e;
         }
     }
 
@@ -98,11 +97,20 @@ class PrintTicketJob implements ShouldQueue
      */
     public function failed(Throwable $exception): void
     {
+        $rootCause = $exception;
+
+        if ($exception instanceof MaxAttemptsExceededException && $exception->getPrevious() instanceof Throwable) {
+            $rootCause = $exception->getPrevious();
+        }
+
         Log::critical('Job de impressao falhou permanentemente', [
             'ticket_id' => $this->ticket->id,
             'ticket_key' => $this->ticket->key,
             'location' => $this->ticket->location,
             'error' => $exception->getMessage(),
+            'error_class' => get_class($exception),
+            'root_cause_error' => $rootCause->getMessage(),
+            'root_cause_class' => get_class($rootCause),
         ]);
     }
 
