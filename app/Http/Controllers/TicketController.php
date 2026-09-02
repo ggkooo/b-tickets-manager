@@ -6,6 +6,7 @@ use App\Jobs\PrintTicketJob;
 use Illuminate\Http\Request;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Support\ServiceCatalog;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 
@@ -61,18 +62,14 @@ class TicketController extends Controller
     public function store(Request $request)
     {
         $location = $this->resolveLocation($request);
+        $allowedTypes = ServiceCatalog::allowedTypesForLocation($location);
 
         $validated = $request->validate([
-            'service_type' => 'required|string|in:Atendimento Normal,Atendimento Preferencial,Retirada de Exames ou Entrega de Amostras',
+            'service_type' => ['required', 'string', 'in:' . implode(',', $allowedTypes)],
         ]);
 
         $type = $validated['service_type'];
-
-        $prefix = match ($type) {
-            'Atendimento Normal'       => 'N',
-            'Atendimento Preferencial' => 'P',
-            'Retirada de Exames ou Entrega de Amostras' => 'E',
-        };
+        $prefix = ServiceCatalog::prefixFor($location, $type);
 
         $ticket = null;
         $attempts = 0;
@@ -248,7 +245,7 @@ class TicketController extends Controller
 
         if (!in_array($location, User::allowedLocations(), true)) {
             abort(response()->json([
-                'message' => 'Local invalido. Use campus ou centro.',
+                'message' => 'Local invalido. Locais permitidos: ' . implode(', ', User::allowedLocations()) . '.',
             ], 422));
         }
 
