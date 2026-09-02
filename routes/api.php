@@ -31,7 +31,8 @@ Route::middleware(['auth:sanctum', 'superadmin'])->group(function () {
     Route::post('/printer-settings', [PrinterSettingsController::class, 'store']);
     Route::patch('/printer-settings/{printerSetting}', [PrinterSettingsController::class, 'update']);
     Route::post('/videos/upload', [VideoController::class, 'upload']);
-    Route::delete('/videos/{filename}', [VideoController::class, 'destroy']);
+    Route::post('/videos/link', [VideoController::class, 'storeLink']);
+    Route::delete('/videos/{video}', [VideoController::class, 'destroy']);
     Route::get('/users', [UserController::class, 'index']);
     Route::patch('/users/{user}', [UserController::class, 'update']);
     Route::delete('/users/{user}', [UserController::class, 'destroy']);
