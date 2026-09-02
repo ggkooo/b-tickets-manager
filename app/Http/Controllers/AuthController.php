@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -49,7 +50,7 @@ class AuthController extends Controller
             'status' => 'success',
             'message' => 'User registered successfully',
             'data' => [
-                'user' => $user
+                'user' => (new UserResource($user))->resolve(),
             ]
         ], 201);
     }
@@ -88,7 +89,7 @@ class AuthController extends Controller
             'data' => [
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'user' => $user->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at'])
+                'user' => (new UserResource($user))->resolve(),
             ]
         ]);
     }
