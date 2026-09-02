@@ -41,4 +41,35 @@ class PrinterSetting extends Model
             self::CONNECTION_SHARED_WINDOWS,
         ];
     }
+
+    /**
+     * Builds the attributes to persist from a full (already validated, and —
+     * for updates — merged with the existing record's current values) set of
+     * printer setting fields. Network-only fields are cleared when the
+     * connection type doesn't need them, and vice versa.
+     *
+     * @param array<string, mixed> $validated
+     * @return array<string, mixed>
+     */
+    public static function attributesFromValidated(array $validated): array
+    {
+        $connectionType = $validated['connection_type'];
+
+        return [
+            'name' => trim((string) $validated['name']),
+            'enabled' => (bool) $validated['enabled'],
+            'connection_type' => $connectionType,
+            'host' => $connectionType === self::CONNECTION_NETWORK
+                ? trim((string) ($validated['host'] ?? ''))
+                : null,
+            'port' => $connectionType === self::CONNECTION_NETWORK
+                ? (int) ($validated['port'] ?? 9100)
+                : null,
+            'share_path' => $connectionType === self::CONNECTION_SHARED_WINDOWS
+                ? trim((string) ($validated['share_path'] ?? ''))
+                : null,
+            'profile' => trim((string) ($validated['profile'] ?? 'simple')),
+            'header' => trim((string) ($validated['header'] ?? 'SENHA DE ATENDIMENTO')),
+        ];
+    }
 }
