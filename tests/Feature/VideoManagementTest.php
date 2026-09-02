@@ -100,6 +100,23 @@ class VideoManagementTest extends TestCase
             ->assertJsonPath('0.url', 'https://youtube.com/watch?v=campus');
     }
 
+    public function test_authenticated_admin_can_list_videos_without_a_location_query_param(): void
+    {
+        Video::factory()->create(['location' => User::LOCATION_CAMPUS, 'type' => Video::TYPE_LINK, 'url' => 'https://youtube.com/watch?v=campus']);
+        Video::factory()->create(['location' => User::LOCATION_CENTRO, 'type' => Video::TYPE_LINK, 'url' => 'https://youtube.com/watch?v=centro']);
+
+        $admin = User::factory()->superAdmin()->create(['location' => User::LOCATION_CAMPUS]);
+        $token = $admin->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeaders($this->apiHeaders($token))
+            ->getJson('/api/videos');
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(1)
+            ->assertJsonPath('0.url', 'https://youtube.com/watch?v=campus');
+    }
+
     public function test_superadmin_cannot_delete_a_video_from_another_location(): void
     {
         $centroVideo = Video::factory()->create(['location' => User::LOCATION_CENTRO, 'type' => Video::TYPE_LINK, 'url' => 'https://youtube.com/watch?v=x']);
