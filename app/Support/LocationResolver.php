@@ -15,8 +15,14 @@ class LocationResolver
 {
     public static function resolveFromRequest(Request $request): string
     {
-        if ($request->user()) {
-            return $request->user()->location;
+        // These routes sit outside the `auth:sanctum` middleware group (the
+        // TV/totem screens call them unauthenticated), so the default guard
+        // never inspects the Bearer token here. Query the sanctum guard
+        // explicitly to still honor it when an admin session sends one.
+        $user = $request->user('sanctum') ?? $request->user();
+
+        if ($user) {
+            return $user->location;
         }
 
         $rawLocation = $request->input('location', $request->header('X-UNILAB-LOCATION'));
