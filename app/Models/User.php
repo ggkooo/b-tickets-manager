@@ -18,6 +18,14 @@ class User extends Authenticatable
     public const LOCATION_CAMPUS = 'campus';
     public const LOCATION_CENTRO = 'centro';
 
+    public const LOCATION_CRE_IJUI = 'ijui';
+    public const LOCATION_CRE_SANTA_ROSA = 'santa-rosa';
+    public const LOCATION_CRE_PANAMBI = 'panambi';
+    public const LOCATION_CRE_TRES_PASSOS = 'tres-passos';
+
+    public const INSTITUTION_UNILAB = 'unilab';
+    public const INSTITUTION_CRE = 'cre';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -75,9 +83,39 @@ class User extends Authenticatable
      */
     public static function allowedLocations(): array
     {
+        return array_keys(self::locationInstitutionMap());
+    }
+
+    /**
+     * Maps every valid location slug to the institution (unit) it belongs to.
+     *
+     * @return array<string, string>
+     */
+    public static function locationInstitutionMap(): array
+    {
         return [
-            self::LOCATION_CAMPUS,
-            self::LOCATION_CENTRO,
+            self::LOCATION_CAMPUS => self::INSTITUTION_UNILAB,
+            self::LOCATION_CENTRO => self::INSTITUTION_UNILAB,
+            self::LOCATION_CRE_IJUI => self::INSTITUTION_CRE,
+            self::LOCATION_CRE_SANTA_ROSA => self::INSTITUTION_CRE,
+            self::LOCATION_CRE_PANAMBI => self::INSTITUTION_CRE,
+            self::LOCATION_CRE_TRES_PASSOS => self::INSTITUTION_CRE,
         ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function allowedLocationsForInstitution(string $institution): array
+    {
+        return array_keys(array_filter(
+            self::locationInstitutionMap(),
+            fn (string $mappedInstitution) => $mappedInstitution === $institution,
+        ));
+    }
+
+    public static function institutionForLocation(?string $location): ?string
+    {
+        return self::locationInstitutionMap()[$location] ?? null;
     }
 }
