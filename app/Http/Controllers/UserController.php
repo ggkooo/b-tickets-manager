@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateUserRequest;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,14 +18,14 @@ class UserController extends Controller
         $users = User::query()
             ->where('location', $location)
             ->orderBy('name')
-            ->get(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']);
+            ->get();
 
-        return response()->json($users);
+        return response()->json(UserResource::collection($users)->resolve());
     }
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
-        $this->abortIfDifferentLocation($request, $user);
+        $this->authorize('manage', $user);
 
         $validated = $request->validated();
 
@@ -42,13 +43,13 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'User updated successfully',
-            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
+            'user' => (new UserResource($user->fresh()))->resolve(),
         ]);
     }
 
     public function destroy(Request $request, User $user): JsonResponse
     {
-        $this->abortIfDifferentLocation($request, $user);
+        $this->authorize('manage', $user);
 
         if ($user->is_super_admin && User::where('is_super_admin', true)->where('location', $request->user()->location)->count() === 1) {
             return response()->json([
@@ -71,12 +72,12 @@ class UserController extends Controller
 
     public function makeAdmin(Request $request, User $user): JsonResponse
     {
-        $this->abortIfDifferentLocation($request, $user);
+        $this->authorize('manage', $user);
 
         if ($user->is_admin) {
             return response()->json([
                 'message' => 'User is already an administrator',
-                'user' => $user->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
+                'user' => (new UserResource($user))->resolve(),
             ]);
         }
 
@@ -92,18 +93,18 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'User promoted to administrator successfully',
-            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
+            'user' => (new UserResource($user->fresh()))->resolve(),
         ]);
     }
 
     public function removeAdmin(Request $request, User $user): JsonResponse
     {
-        $this->abortIfDifferentLocation($request, $user);
+        $this->authorize('manage', $user);
 
         if (!$user->is_admin) {
             return response()->json([
                 'message' => 'User is not an administrator',
-                'user' => $user->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
+                'user' => (new UserResource($user))->resolve(),
             ]);
         }
 
@@ -125,14 +126,7 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'Administrator access removed successfully',
-            'user' => $user->fresh()->only(['id', 'uuid', 'name', 'login', 'location', 'active', 'is_admin', 'is_super_admin', 'created_at', 'updated_at']),
+            'user' => (new UserResource($user->fresh()))->resolve(),
         ]);
-    }
-
-    private function abortIfDifferentLocation(Request $request, User $user): void
-    {
-        if ($user->location !== $request->user()->location) {
-            abort(404);
-        }
     }
 }

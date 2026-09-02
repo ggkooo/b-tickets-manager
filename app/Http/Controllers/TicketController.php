@@ -2,19 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreTicketRequest;
 use App\Jobs\PrintTicketJob;
-use Illuminate\Http\Request;
 use App\Models\Ticket;
-use App\Models\User;
-use App\Support\ServiceCatalog;
+use App\Services\TicketService;
+use App\Support\LocationResolver;
 use Carbon\Carbon;
-use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 
 class TicketController extends Controller
 {
+    public function __construct(private readonly TicketService $ticketService)
+    {
+    }
+
     public function index(Request $request)
     {
-        $location = $this->resolveLocation($request);
+        $location = LocationResolver::resolveFromRequest($request);
 
         $tickets = Ticket::where('completed', false)
             ->where('location', $location)
@@ -28,7 +32,7 @@ class TicketController extends Controller
 
     public function recentlyCalled(Request $request)
     {
-        $location = $this->resolveLocation($request);
+        $location = LocationResolver::resolveFromRequest($request);
 
         $tickets = Ticket::whereNotNull('called_at')
             ->where('location', $location)
@@ -59,40 +63,12 @@ class TicketController extends Controller
         return response()->json($tickets);
     }
 
-    public function store(Request $request)
+    public function store(StoreTicketRequest $request)
     {
-        $location = $this->resolveLocation($request);
-        $allowedTypes = ServiceCatalog::allowedTypesForLocation($location);
+        $location = $request->resolvedLocation();
+        $serviceType = $request->validated('service_type');
 
-        $validated = $request->validate([
-            'service_type' => ['required', 'string', 'in:' . implode(',', $allowedTypes)],
-        ]);
-
-        $type = $validated['service_type'];
-        $prefix = ServiceCatalog::prefixFor($location, $type);
-
-        $ticket = null;
-        $attempts = 0;
-
-        while ($ticket === null && $attempts < 5) {
-            $attempts++;
-            $sequence = $this->nextSequenceForPrefix($prefix, $location);
-            $key = sprintf('%s-%04d', $prefix, $sequence);
-
-            try {
-                $ticket = Ticket::create([
-                    'key'          => $key,
-                    'location'     => $location,
-                    'service_type' => $type,
-                    'completed'    => false,
-                ]);
-            } catch (QueryException $e) {
-                // In case of concurrent requests, retry with the next available number.
-                if ((string) $e->getCode() !== '23000') {
-                    throw $e;
-                }
-            }
-        }
+        $ticket = $this->ticketService->createTicket($location, $serviceType);
 
         if ($ticket === null) {
             return response()->json([
@@ -118,7 +94,7 @@ class TicketController extends Controller
      */
     public function call(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id, $request->user()->location);
+        $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
 
         if ($ticket->called_at) {
             return response()->json([
@@ -142,7 +118,7 @@ class TicketController extends Controller
      */
     public function recall(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id, $request->user()->location);
+        $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
 
         if (!$ticket->called_at) {
             return response()->json([
@@ -169,7 +145,7 @@ class TicketController extends Controller
 
     public function complete(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id, $request->user()->location);
+        $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
         $ticket->update([
             'completed' => true,
             'completed_at' => Carbon::now(),
@@ -181,7 +157,7 @@ class TicketController extends Controller
 
     public function cancel(Request $request, $id)
     {
-        $ticket = $this->resolveTicket($id, $request->user()->location);
+        $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
         $ticket->update([
             'completed' => true,
             'completed_at' => Carbon::now(),
@@ -189,66 +165,5 @@ class TicketController extends Controller
         ]);
 
         return response()->json($ticket);
-    }
-
-    /**
-     * Resolve a ticket by numeric ID or by key (e.g. "P-QS1T").
-     */
-    private function resolveTicket(string|int $identifier, string $location): Ticket
-    {
-        return is_numeric($identifier)
-            ? Ticket::where('location', $location)->findOrFail($identifier)
-            : Ticket::where('location', $location)
-                ->where('key', $identifier)
-                ->orderBy('created_at', 'desc')
-                ->orderBy('id', 'desc')
-                ->firstOrFail();
-    }
-
-
-
-    /**
-     * Get next sequence for one prefix (N, P, E, R).
-     *
-     * This sequence resets daily per prefix (e.g. N-0001 every new day).
-     */
-    private function nextSequenceForPrefix(string $prefix, string $location): int
-    {
-        $pattern = '/^' . preg_quote($prefix, '/') . '-(\d+)$/';
-        $today = Carbon::today();
-
-        $maxSequence = Ticket::whereDate('created_at', $today)
-            ->where('location', $location)
-            ->where('key', 'like', $prefix . '-%')
-            ->pluck('key')
-            ->map(function (string $key) use ($pattern): ?int {
-                if (!preg_match($pattern, $key, $matches)) {
-                    return null;
-                }
-
-                return (int) $matches[1];
-            })
-            ->filter(fn (?int $sequence) => $sequence !== null)
-            ->max();
-
-        return ($maxSequence ?? 0) + 1;
-    }
-
-    private function resolveLocation(Request $request): string
-    {
-        if ($request->user()) {
-            return $request->user()->location;
-        }
-
-        $rawLocation = $request->input('location', $request->header('X-UNILAB-LOCATION'));
-        $location = strtolower(trim((string) $rawLocation));
-
-        if (!in_array($location, User::allowedLocations(), true)) {
-            abort(response()->json([
-                'message' => 'Local invalido. Locais permitidos: ' . implode(', ', User::allowedLocations()) . '.',
-            ], 422));
-        }
-
-        return $location;
     }
 }
