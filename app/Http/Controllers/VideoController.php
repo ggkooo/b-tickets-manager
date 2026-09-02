@@ -2,19 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
+use App\Http\Requests\UploadVideoRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class VideoController extends Controller
 {
     // Upload a video (mp4 only)
-    public function upload(Request $request)
+    public function upload(UploadVideoRequest $request)
     {
-        $request->validate([
-            'video' => 'required|file|mimetypes:video/mp4',
-        ]);
-
         $file = $request->file('video');
         $filename = 'video_' . Str::random(16) . '.mp4';
         $path = $file->storeAs('videos', $filename, 'public');
