@@ -73,6 +73,22 @@ class VideoManagementTest extends TestCase
         ]);
     }
 
+    public function test_superadmin_can_upload_a_quicktime_branded_mp4(): void
+    {
+        // Files saved with a .mp4 extension (common from Apple devices and
+        // some editors) are sometimes detected as video/quicktime rather
+        // than video/mp4 — these must still be accepted.
+        $admin = User::factory()->superAdmin()->create(['location' => User::LOCATION_CAMPUS]);
+        $token = $admin->createToken('test-token')->plainTextToken;
+
+        $response = $this->withHeaders($this->apiHeaders($token))
+            ->post('/api/videos/upload', [
+                'video' => UploadedFile::fake()->create('promo.mp4', 100, 'video/quicktime'),
+            ]);
+
+        $response->assertCreated();
+    }
+
     public function test_video_link_must_be_a_valid_url(): void
     {
         $admin = User::factory()->superAdmin()->create(['location' => User::LOCATION_CAMPUS]);
