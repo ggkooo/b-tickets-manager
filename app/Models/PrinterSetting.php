@@ -31,9 +31,6 @@ class PrinterSetting extends Model
         return $query->where('location', $location);
     }
 
-    /**
-     * @return array<int, string>
-     */
     public static function allowedConnectionTypes(): array
     {
         return [
@@ -42,15 +39,6 @@ class PrinterSetting extends Model
         ];
     }
 
-    /**
-     * Builds the attributes to persist from a full (already validated, and —
-     * for updates — merged with the existing record's current values) set of
-     * printer setting fields. Network-only fields are cleared when the
-     * connection type doesn't need them, and vice versa.
-     *
-     * @param array<string, mixed> $validated
-     * @return array<string, mixed>
-     */
     public static function attributesFromValidated(array $validated): array
     {
         $connectionType = $validated['connection_type'];
