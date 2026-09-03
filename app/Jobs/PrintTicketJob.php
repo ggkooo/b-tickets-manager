@@ -1,8 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Jobs;
 
 use App\Models\Ticket;
+use App\Models\User;
 use App\Support\TicketPrinterConnector;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -23,46 +26,29 @@ class PrintTicketJob implements ShouldQueue
 
     public int $tries = 6;
 
-    /**
-     * Backoff progressive para indisponibilidade temporaria de impressora/rede.
-     *
-     * @var array<int, int>
-     */
+    public int $timeout = 120;
+
     public array $backoff = [60, 180, 300, 600, 900];
 
     private Ticket $ticket;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(Ticket $ticket)
     {
         $this->ticket = $ticket;
         $this->queue = 'printing';
     }
 
-    /**
-     * Get the middleware the job should pass through.
-     *
-     * @return array<int, object>
-     */
     public function middleware(): array
     {
         return [
-            // Garante que apenas um job de impressão por local é processado por vez
             (new WithoutOverlapping("printer-location:{$this->ticket->location}"))
                 ->releaseAfter(15)
                 ->expireAfter(180),
         ];
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
-        set_time_limit(0);
-
         try {
             Log::info('Iniciando impressao de ticket via queue', [
                 'ticket_id' => $this->ticket->id,
@@ -92,9 +78,6 @@ class PrintTicketJob implements ShouldQueue
         }
     }
 
-    /**
-     * Handle a job failure.
-     */
     public function failed(Throwable $exception): void
     {
         $rootCause = $exception;
@@ -114,9 +97,6 @@ class PrintTicketJob implements ShouldQueue
         ]);
     }
 
-    /**
-     * Print a ticket.
-     */
     private function printTicket(Ticket $ticket): void
     {
         $printerConfigs = $this->resolvePrinterConfigsForLocation($ticket->location);
@@ -166,9 +146,6 @@ class PrintTicketJob implements ShouldQueue
         }
     }
 
-    /**
-     * Print a ticket using one printer configuration.
-     */
     private function printTicketUsingPrinterConfig(Ticket $ticket, array $printerConfig): void
     {
         $printerConnection = TicketPrinterConnector::resolve($printerConfig);
@@ -184,6 +161,8 @@ class PrintTicketJob implements ShouldQueue
 
         $profileName = (string) ($printerConfig['profile'] ?? 'simple');
         $header = (string) ($printerConfig['header'] ?? 'SENHA DE ATENDIMENTO');
+        $institution = User::institutionForLocation($ticket->location) ?? User::INSTITUTION_UNILAB;
+        $institutionLabel = User::institutionDisplayName($institution);
         $locationLabel = $this->formatLocationLabel($ticket->location);
         $printedAt = now(config('app.timezone'))->format('d/m/Y H:i:s');
 
@@ -206,7 +185,7 @@ class PrintTicketJob implements ShouldQueue
             $printer->text("================================\n");
             $printer->setEmphasis(true);
             $printer->text($header . "\n");
-            $printer->text('UniLab ' . $locationLabel . "\n");
+            $printer->text($institutionLabel . ' ' . $locationLabel . "\n");
             $printer->setEmphasis(false);
             $printer->text("================================\n");
 
@@ -259,9 +238,6 @@ class PrintTicketJob implements ShouldQueue
         }
     }
 
-    /**
-     * Resolve enabled printer configurations from database.
-     */
     private function resolvePrinterConfigsForLocation(string $location): array
     {
         $databaseConfigs = PrinterSetting::query()
@@ -297,9 +273,6 @@ class PrintTicketJob implements ShouldQueue
             ->all();
     }
 
-    /**
-     * Format location label.
-     */
     private function formatLocationLabel(string $location): string
     {
         return match ($location) {
