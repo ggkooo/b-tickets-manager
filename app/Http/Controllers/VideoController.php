@@ -1,24 +1,22 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreVideoLinkRequest;
 use App\Http\Requests\UploadVideoRequest;
 use App\Models\Video;
 use App\Support\LocationResolver;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VideoController extends Controller
 {
-    /**
-     * List the media (uploaded videos + links) for one location. Public —
-     * the TV screen calls this without logging in, the same way it reads
-     * tickets. Location comes from the authenticated user when present,
-     * otherwise from the `location` input / `X-UNILAB-LOCATION` header.
-     */
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
         $location = LocationResolver::resolveFromRequest($request);
 
@@ -36,10 +34,7 @@ class VideoController extends Controller
         return response()->json($videos);
     }
 
-    /**
-     * Upload an mp4 file for the authenticated superadmin's location.
-     */
-    public function upload(UploadVideoRequest $request)
+    public function upload(UploadVideoRequest $request): JsonResponse
     {
         $file = $request->file('video');
         $filename = 'video_' . Str::random(16) . '.mp4';
@@ -62,11 +57,7 @@ class VideoController extends Controller
         ], 201);
     }
 
-    /**
-     * Register an external video link (YouTube or a direct video URL) for
-     * the authenticated superadmin's location.
-     */
-    public function storeLink(StoreVideoLinkRequest $request)
+    public function storeLink(StoreVideoLinkRequest $request): JsonResponse
     {
         $video = Video::query()->create([
             'location' => $request->user()->location,
@@ -85,12 +76,7 @@ class VideoController extends Controller
         ], 201);
     }
 
-    /**
-     * Serve an uploaded video file by filename. Legacy direct-streaming
-     * route — uploaded files are also reachable directly through the
-     * `storage` symlink via the URL returned by index()/upload().
-     */
-    public function show($filename)
+    public function show(string $filename): JsonResponse|StreamedResponse
     {
         $path = 'videos/' . $filename;
         if (!Storage::disk('public')->exists($path)) {
@@ -105,15 +91,9 @@ class VideoController extends Controller
         ]);
     }
 
-    /**
-     * Remove a video (upload or link) belonging to the authenticated
-     * superadmin's location. Deletes the underlying file for uploads.
-     */
-    public function destroy(Request $request, Video $video)
+    public function destroy(Request $request, Video $video): JsonResponse
     {
-        if ($video->location !== $request->user()->location) {
-            abort(404);
-        }
+        $this->authorize('manage', $video);
 
         if ($video->type === Video::TYPE_UPLOAD && $video->filename) {
             Storage::disk('public')->delete('videos/' . $video->filename);
