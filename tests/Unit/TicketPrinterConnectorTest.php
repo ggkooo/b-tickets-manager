@@ -17,7 +17,6 @@ class TicketPrinterConnectorTest extends TestCase
         ]);
 
         $this->assertSame('network', $connection['connection_type']);
-        // Host is passed as-is without DNS resolution
         $this->assertSame('IJ50D19', $connection['host']);
         $this->assertSame(9100, $connection['port']);
     }
@@ -42,7 +41,6 @@ class TicketPrinterConnectorTest extends TestCase
         ]);
 
         $this->assertSame('shared_windows', $connection['connection_type']);
-        // UNC path deve ser convertido para formato SMB
         $this->assertSame('smb://PC-ATENDIMENTO/EPSON-TM-T20', $connection['share_path']);
     }
 
