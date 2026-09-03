@@ -122,26 +122,18 @@ class TicketPrinterConnector
         return $parsed['scheme'] . '://' . '***:***@' . $parsed['host'] . $path;
     }
 
-    /**
-     * Converte um caminho UNC (\\computer\printer) para formato SMB (smb://computer/printer)
-     * necessário pelo WindowsPrintConnector da biblioteca escpos
-     */
     private static function convertUncPathToSmb(string $uncPath): string
     {
-        // Remove espaços em branco
         $uncPath = trim($uncPath);
 
-        // Se já está em formato SMB, retorna como está
         if (str_starts_with($uncPath, 'smb://')) {
             return $uncPath;
         }
 
-        // Remove barras invertidas do início (\\)
         if (str_starts_with($uncPath, '\\\\')) {
             $uncPath = substr($uncPath, 2);
         }
 
-        // Replace a primeira barra invertida por barra normal
         $smbPath = str_replace('\\', '/', $uncPath);
 
         return 'smb://' . $smbPath;
