@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
+use App\Support\ServiceCatalog;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -36,7 +39,7 @@ class AttendanceReportBuilder
         $attendancesByUser = $this->buildAttendancesByUser($users, $attendancesByGuiche);
 
         $totalAttendances = $attendances->count();
-        $priorityAttendances = $attendances->where('service_type', 'Atendimento Preferencial')->count();
+        $priorityAttendances = $attendances->where('service_type', ServiceCatalog::PRIORITY_SERVICE_TYPE)->count();
         $otherAttendances = $totalAttendances - $priorityAttendances;
         $canceledAttendances = $attendances->where('completion_type', 'canceled')->count();
         $completedAttendances = $attendances->where('completion_type', 'completed')->count();
