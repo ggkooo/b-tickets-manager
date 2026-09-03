@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Http\Requests\UpdateUserRequest;
@@ -51,13 +53,13 @@ class UserController extends Controller
     {
         $this->authorize('manage', $user);
 
-        if ($user->is_super_admin && User::where('is_super_admin', true)->where('location', $request->user()->location)->count() === 1) {
+        if ($user->is_super_admin && User::isOnlySuperAdminAt($request->user()->location)) {
             return response()->json([
                 'message' => 'Cannot delete the last super administrator',
             ], 422);
         }
 
-        if ($user->is_admin && User::where('is_admin', true)->where('location', $request->user()->location)->count() === 1) {
+        if ($user->is_admin && User::isOnlyAdminAt($request->user()->location)) {
             return response()->json([
                 'message' => 'Cannot delete the last administrator',
             ], 422);
@@ -114,7 +116,7 @@ class UserController extends Controller
             ], 422);
         }
 
-        if (User::where('is_admin', true)->where('location', $request->user()->location)->count() === 1) {
+        if (User::isOnlyAdminAt($request->user()->location)) {
             return response()->json([
                 'message' => 'Cannot remove administrator access from the last administrator',
             ], 422);
