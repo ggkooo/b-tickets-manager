@@ -71,25 +71,35 @@ Ticket printing runs through a queue worker:
 php artisan queue:work
 ```
 
-### Run on the Network
+### Run on the Network / HTTPS
 
-To make the API reachable from other devices on the network, bind the server to all interfaces:
+`php artisan serve` is a development server — it's not meant to be exposed
+directly to the network or to terminate TLS. In production this API sits
+behind a [Caddy](https://caddyserver.com) reverse proxy that owns the
+certificate and forwards `/api/*` and `/storage/*` to it, so the server only
+needs to bind to `localhost`:
 
 ```bash
-php artisan serve --host=0.0.0.0 --port=8000
+php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-It will then be reachable at:
+Set `APP_URL` in `.env` to the **public HTTPS address** (the one Caddy
+serves), not `localhost` — this is what `Storage::url()` uses to build
+uploaded-file URLs (e.g. TV videos), and if it's wrong those come back as
+plain `http://`, which browsers block as mixed content on an HTTPS page:
 
-```text
-http://<host-machine-ip>:8000/api
+```env
+APP_URL=https://200.132.193.104:8443
+TRUSTED_PROXIES=*
 ```
 
-For example, on this project's host machine:
+`TRUSTED_PROXIES=*` (already the default) is required so Laravel trusts the
+`X-Forwarded-Proto` header Caddy sends — without it, Laravel thinks every
+request is plain HTTP even when the client connected over HTTPS.
 
-```text
-http://200.132.193.104:8000/api
-```
+See the reverse proxy / TLS setup itself — including why it listens on 8443
+instead of 443, and how to trust its certificate on other devices — in
+[`../Caddyfile`](../Caddyfile) and the note at the top of it.
 
 ## Testing
 
