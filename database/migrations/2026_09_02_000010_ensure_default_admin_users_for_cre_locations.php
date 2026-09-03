@@ -8,11 +8,6 @@ use Illuminate\Support\Str;
 
 return new class extends Migration
 {
-    /**
-     * List of CRE locations that need a bootstrap super-admin account,
-     * mirroring how "centro" was bootstrapped for Unilab in the
-     * 2026_04_14_000007 migration.
-     */
     private array $locations = [
         User::LOCATION_CRE_IJUI,
         User::LOCATION_CRE_SANTA_ROSA,
@@ -20,9 +15,6 @@ return new class extends Migration
         User::LOCATION_CRE_TRES_PASSOS,
     ];
 
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         foreach ($this->locations as $location) {
@@ -43,9 +35,6 @@ return new class extends Migration
         }
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         DB::table('users')
