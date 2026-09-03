@@ -17,7 +17,8 @@ class UploadVideoRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'video' => 'required|file|mimetypes:video/mp4',
+            // max is in kilobytes: 5GB = 5 * 1024 * 1024 KB.
+            'video' => 'required|file|mimetypes:video/mp4|max:5242880',
         ];
     }
 }
