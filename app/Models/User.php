@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -12,7 +11,6 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
     public const LOCATION_CAMPUS = 'campus';
@@ -26,11 +24,6 @@ class User extends Authenticatable
     public const INSTITUTION_UNILAB = 'unilab';
     public const INSTITUTION_CRE = 'cre';
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
     protected $fillable = [
         'uuid',
         'name',
@@ -42,25 +35,14 @@ class User extends Authenticatable
         'is_super_admin',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'active' => 'boolean',
             'is_admin' => 'boolean',
@@ -78,19 +60,11 @@ class User extends Authenticatable
         return $this->is_super_admin;
     }
 
-    /**
-     * @return array<int, string>
-     */
     public static function allowedLocations(): array
     {
         return array_keys(self::locationInstitutionMap());
     }
 
-    /**
-     * Maps every valid location slug to the institution (unit) it belongs to.
-     *
-     * @return array<string, string>
-     */
     public static function locationInstitutionMap(): array
     {
         return [
@@ -103,9 +77,6 @@ class User extends Authenticatable
         ];
     }
 
-    /**
-     * @return array<int, string>
-     */
     public static function allowedLocationsForInstitution(string $institution): array
     {
         return array_keys(array_filter(
