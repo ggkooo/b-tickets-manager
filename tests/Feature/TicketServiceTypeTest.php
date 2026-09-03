@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class TicketServiceTypeTest extends TestCase
@@ -14,10 +15,6 @@ class TicketServiceTypeTest extends TestCase
     {
         parent::setUp();
 
-        // Ticket creation dispatches PrintTicketJob synchronously in the test
-        // environment (QUEUE_CONNECTION=sync). Fake the queue so these tests
-        // exercise ticket/service-type validation only, without depending on
-        // a printer being configured for the location.
         Queue::fake();
     }
 
@@ -40,9 +37,6 @@ class TicketServiceTypeTest extends TestCase
         $this->assertStringStartsWith('E-', $response->json('ticket.key'));
     }
 
-    /**
-     * @return array<string, array{0: string, 1: string}>
-     */
     public static function creServiceTypeProvider(): array
     {
         return [
@@ -54,9 +48,7 @@ class TicketServiceTypeTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider creServiceTypeProvider
-     */
+    #[DataProvider('creServiceTypeProvider')]
     public function test_it_accepts_cre_service_types(string $serviceType, string $expectedPrefix): void
     {
         config(['app.api_key' => 'test-api-key']);
