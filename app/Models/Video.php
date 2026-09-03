@@ -25,10 +25,6 @@ class Video extends Model
         return $query->where('location', $location);
     }
 
-    /**
-     * The URL the TV screen should actually play: the public storage URL
-     * for an uploaded file, or the link as-is for an external one.
-     */
     public function getPlaybackUrlAttribute(): ?string
     {
         if ($this->type === self::TYPE_UPLOAD && $this->filename) {
