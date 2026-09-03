@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use Database\Factories\UserFactory;
@@ -88,5 +90,24 @@ class User extends Authenticatable
     public static function institutionForLocation(?string $location): ?string
     {
         return self::locationInstitutionMap()[$location] ?? null;
+    }
+
+    public static function institutionDisplayName(string $institution): string
+    {
+        return match ($institution) {
+            self::INSTITUTION_UNILAB => 'UniLab',
+            self::INSTITUTION_CRE => 'CRE',
+            default => ucfirst($institution),
+        };
+    }
+
+    public static function isOnlySuperAdminAt(string $location): bool
+    {
+        return self::where('is_super_admin', true)->where('location', $location)->count() === 1;
+    }
+
+    public static function isOnlyAdminAt(string $location): bool
+    {
+        return self::where('is_admin', true)->where('location', $location)->count() === 1;
     }
 }
