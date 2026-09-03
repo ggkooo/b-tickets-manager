@@ -86,6 +86,25 @@ class AdminAuthorizationTest extends TestCase
             ->assertJsonPath('data.user.is_super_admin', true);
     }
 
+    public function test_a_deactivated_user_cannot_log_in(): void
+    {
+        $user = User::factory()->create([
+            'login' => 'deactivated.user',
+            'password' => bcrypt('secret123'),
+            'active' => false,
+        ]);
+
+        $response = $this->postJson('/api/login', [
+            'login' => $user->login,
+            'password' => 'secret123',
+            'location' => $user->location,
+        ], $this->apiHeaders());
+
+        $response
+            ->assertStatus(401)
+            ->assertJsonPath('message', 'Invalid credentials');
+    }
+
     public function test_non_admin_user_cannot_access_admin_report_route(): void
     {
         $user = User::factory()->create();
