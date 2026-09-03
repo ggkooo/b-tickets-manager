@@ -1,34 +1,24 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
-    /**
-     * Register a new user.
-     *
-     * @param  \App\Http\Requests\RegisterRequest  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function register(RegisterRequest $request)
+    public function register(RegisterRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $location = $request->user()?->location;
-
-        if ($request->user() === null) {
-            return response()->json([
-                'message' => 'Unauthenticated.',
-            ], 401);
-        }
+        $location = $request->user()->location;
 
         if ($location === null) {
             return response()->json([
@@ -55,13 +45,7 @@ class AuthController extends Controller
         ], 201);
     }
 
-    /**
-     * Authenticate a user and return a token.
-     *
-     * @param  \App\Http\Requests\LoginRequest  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function login(LoginRequest $request)
+    public function login(LoginRequest $request): JsonResponse
     {
         $credentials = $request->validated();
 
@@ -69,6 +53,7 @@ class AuthController extends Controller
             'login' => $credentials['login'],
             'password' => $credentials['password'],
             'location' => $credentials['location'],
+            'active' => true,
         ];
 
         if (!Auth::attempt($attemptCredentials)) {
@@ -78,9 +63,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $user = User::where('login', $credentials['login'])
-            ->where('location', $credentials['location'])
-            ->firstOrFail();
+        $user = $request->user();
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
