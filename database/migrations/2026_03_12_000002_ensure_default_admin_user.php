@@ -7,9 +7,6 @@ use Illuminate\Support\Str;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         DB::table('users')->updateOrInsert([
@@ -26,9 +23,6 @@ return new class extends Migration
         ]);
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         DB::table('users')->where('login', 'admin')->delete();

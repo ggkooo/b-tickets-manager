@@ -41,5 +41,5 @@ Route::middleware(['auth:sanctum', 'superadmin'])->group(function () {
 });
 
 Route::get('/tickets/recently-called', [TicketController::class, 'recentlyCalled']);
-Route::get('/videos/{filename}', [VideoController::class, 'show']);
+Route::get('/videos/{filename}', [VideoController::class, 'show'])->where('filename', '[A-Za-z0-9_-]+\.mp4');
 Route::get('/videos', [VideoController::class, 'index']);

@@ -5,18 +5,8 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/**
- * The public-facing shape of a User: everything except the password/token
- * fields. Used everywhere a user is returned from the admin/auth endpoints
- * so that field list only needs to be maintained in one place.
- *
- * @mixin \App\Models\User
- */
 class UserResource extends JsonResource
 {
-    /**
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
         return [

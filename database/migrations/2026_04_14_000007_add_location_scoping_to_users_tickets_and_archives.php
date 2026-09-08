@@ -10,9 +10,6 @@ use Illuminate\Support\Str;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
@@ -67,9 +64,6 @@ return new class extends Migration
             ->update(['location' => User::LOCATION_CAMPUS]);
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('ticket_archives', function (Blueprint $table) {

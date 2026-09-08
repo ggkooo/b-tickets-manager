@@ -1,8 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
-use App\Events\TicketsUpdated;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Model;
@@ -41,5 +43,10 @@ class Ticket extends Model
     public function attendedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'attended_by_user_id');
+    }
+
+    public function scopeForLocation(Builder $query, string $location): Builder
+    {
+        return $query->where('location', $location);
     }
 }

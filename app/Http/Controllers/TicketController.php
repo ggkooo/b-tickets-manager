@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreTicketRequest;
@@ -7,7 +9,9 @@ use App\Jobs\PrintTicketJob;
 use App\Models\Ticket;
 use App\Services\TicketService;
 use App\Support\LocationResolver;
+use App\Support\ServiceCatalog;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class TicketController extends Controller
@@ -16,26 +20,26 @@ class TicketController extends Controller
     {
     }
 
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
         $location = LocationResolver::resolveFromRequest($request);
 
-        $tickets = Ticket::where('completed', false)
-            ->where('location', $location)
+        $tickets = Ticket::forLocation($location)
+            ->where('completed', false)
             ->whereNull('called_at')
-            ->orderByRaw("CASE WHEN service_type = 'Atendimento Preferencial' THEN 0 ELSE 1 END")
+            ->orderByRaw('CASE WHEN service_type = ? THEN 0 ELSE 1 END', [ServiceCatalog::PRIORITY_SERVICE_TYPE])
             ->orderBy('created_at', 'asc')
             ->get();
 
         return response()->json($tickets);
     }
 
-    public function recentlyCalled(Request $request)
+    public function recentlyCalled(Request $request): JsonResponse
     {
         $location = LocationResolver::resolveFromRequest($request);
 
-        $tickets = Ticket::whereNotNull('called_at')
-            ->where('location', $location)
+        $tickets = Ticket::forLocation($location)
+            ->whereNotNull('called_at')
             ->orderBy('called_at', 'desc')
             ->limit(5)
             ->get();
@@ -43,12 +47,12 @@ class TicketController extends Controller
         return response()->json($tickets);
     }
 
-    public function completed(Request $request)
+    public function completed(Request $request): JsonResponse
     {
         $location = $request->user()->location;
 
-        $tickets = Ticket::where('completed', true)
-            ->where('location', $location)
+        $tickets = Ticket::forLocation($location)
+            ->where('completed', true)
             ->where(function ($query) {
                 $query->whereDate('completed_at', Carbon::today())
                     ->orWhere(function ($fallback) {
@@ -63,7 +67,7 @@ class TicketController extends Controller
         return response()->json($tickets);
     }
 
-    public function store(StoreTicketRequest $request)
+    public function store(StoreTicketRequest $request): JsonResponse
     {
         $location = $request->resolvedLocation();
         $serviceType = $request->validated('service_type');
@@ -76,7 +80,6 @@ class TicketController extends Controller
             ], 500);
         }
 
-        // Despacha impressao para a queue (retorna imediatamente ao cliente)
         PrintTicketJob::dispatch($ticket);
 
         return response()->json([
@@ -87,12 +90,7 @@ class TicketController extends Controller
         ], 201);
     }
 
-    /**
-     * Call a ticket to a specific guiche (service window).
-     * POST /tickets/{id}/call  — requires Bearer token
-     * The authenticated user's name is used as the guiche.
-     */
-    public function call(Request $request, $id)
+    public function call(Request $request, string|int $id): JsonResponse
     {
         $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
 
@@ -103,20 +101,12 @@ class TicketController extends Controller
             ], 422);
         }
 
-        $ticket->update([
-            'guiche'    => $request->user()->name,
-            'attended_by_user_id' => $request->user()->id,
-            'called_at' => Carbon::now(),
-        ]);
+        $this->ticketService->assignToGuiche($ticket, $request->user());
 
         return response()->json($ticket);
     }
 
-    /**
-     * Recall a ticket that was already called.
-     * POST /tickets/{id}/recall — requires Bearer token
-     */
-    public function recall(Request $request, $id)
+    public function recall(Request $request, string|int $id): JsonResponse
     {
         $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
 
@@ -134,16 +124,12 @@ class TicketController extends Controller
             ], 422);
         }
 
-        $ticket->update([
-            'guiche'    => $request->user()->name,
-            'attended_by_user_id' => $request->user()->id,
-            'called_at' => Carbon::now(),
-        ]);
+        $this->ticketService->assignToGuiche($ticket, $request->user());
 
         return response()->json($ticket);
     }
 
-    public function complete(Request $request, $id)
+    public function complete(Request $request, string|int $id): JsonResponse
     {
         $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
         $ticket->update([
@@ -155,7 +141,7 @@ class TicketController extends Controller
         return response()->json($ticket);
     }
 
-    public function cancel(Request $request, $id)
+    public function cancel(Request $request, string|int $id): JsonResponse
     {
         $ticket = $this->ticketService->resolveTicket($id, $request->user()->location);
         $ticket->update([

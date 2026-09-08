@@ -14,9 +14,6 @@ class TicketQueuePrintingTest extends TestCase
 {
     use RefreshDatabase;
 
-    /**
-     * Test that creating a ticket dispatches PrintTicketJob to queue
-     */
     public function test_creating_ticket_dispatches_print_job_to_queue(): void
     {
         Queue::fake();
@@ -51,10 +48,8 @@ class TicketQueuePrintingTest extends TestCase
 
         $this->assertEquals('enviando', $response->json('print.status'));
 
-        // Verify PrintTicketJob was dispatched at least once
         Queue::assertPushed(PrintTicketJob::class);
 
-        // Verify ticket was actually created in database
         $ticket = Ticket::where('key', $response->json('ticket.key'))->first();
         $this->assertNotNull($ticket);
         $this->assertEquals($response->json('ticket.key'), $ticket->key);
@@ -62,9 +57,6 @@ class TicketQueuePrintingTest extends TestCase
         $this->assertFalse($ticket->completed);
     }
 
-    /**
-     * Test that job is queued on 'printing' queue
-     */
     public function test_print_job_uses_printing_queue(): void
     {
         Queue::fake();
@@ -87,9 +79,6 @@ class TicketQueuePrintingTest extends TestCase
         Queue::assertPushedOn('printing', PrintTicketJob::class);
     }
 
-    /**
-     * Test that multiple tickets generate multiple print jobs
-     */
     public function test_multiple_tickets_generate_multiple_print_jobs(): void
     {
         Queue::fake();

@@ -75,9 +75,6 @@ class VideoManagementTest extends TestCase
 
     public function test_superadmin_can_upload_a_quicktime_branded_mp4(): void
     {
-        // Files saved with a .mp4 extension (common from Apple devices and
-        // some editors) are sometimes detected as video/quicktime rather
-        // than video/mp4 — these must still be accepted.
         $admin = User::factory()->superAdmin()->create(['location' => User::LOCATION_CAMPUS]);
         $token = $admin->createToken('test-token')->plainTextToken;
 

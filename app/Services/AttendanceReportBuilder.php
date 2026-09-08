@@ -1,22 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
+use App\Support\ServiceCatalog;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-/**
- * Builds the attendance report payload for one location/date range: pulls
- * completed tickets (active + archived), enriches them with the attendant
- * who handled them, and aggregates everything into the shape the admin
- * report screen (and its PDF export) expects.
- */
 class AttendanceReportBuilder
 {
-    /**
-     * @return array<string, mixed>
-     */
     public function build(string $location, Carbon $startDate, Carbon $endDate): array
     {
         $archivedAttendances = DB::table('ticket_archives')
@@ -45,7 +39,7 @@ class AttendanceReportBuilder
         $attendancesByUser = $this->buildAttendancesByUser($users, $attendancesByGuiche);
 
         $totalAttendances = $attendances->count();
-        $priorityAttendances = $attendances->where('service_type', 'Atendimento Preferencial')->count();
+        $priorityAttendances = $attendances->where('service_type', ServiceCatalog::PRIORITY_SERVICE_TYPE)->count();
         $otherAttendances = $totalAttendances - $priorityAttendances;
         $canceledAttendances = $attendances->where('completion_type', 'canceled')->count();
         $completedAttendances = $attendances->where('completion_type', 'completed')->count();

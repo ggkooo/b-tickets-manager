@@ -5,9 +5,6 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         DB::table('tickets')
@@ -26,11 +23,7 @@ return new class extends Migration
             ->update(['completion_type' => 'completed']);
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        // No safe rollback for normalized historical values.
     }
 };
