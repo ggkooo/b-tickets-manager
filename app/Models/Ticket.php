@@ -13,6 +13,14 @@ class Ticket extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        // Every ticket mutation — created, called, recalled, completed,
+        // canceled — goes through save(), so this single hook covers all of
+        // them without the controller needing to know about broadcasting.
+        static::saved(fn (Ticket $ticket) => TicketsUpdated::dispatch($ticket->location));
+    }
+
     protected $fillable = [
         'key',
         'location',
