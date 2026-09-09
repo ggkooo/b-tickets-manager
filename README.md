@@ -65,11 +65,44 @@ php artisan serve
 
 The API is served at `http://localhost:8000/api`.
 
-Ticket printing runs through a queue worker:
+Ticket printing runs through a queue worker. `PrintTicketJob` is dispatched
+onto a dedicated `printing` queue (not `default`), so the worker must be told
+to watch it explicitly — a plain `queue:work`/`queue:listen` with no
+`--queue` flag only processes `default` and silently leaves every print job
+stuck in the `jobs` table forever, with nothing about it in the log:
 
 ```bash
-php artisan queue:work
+php artisan queue:work --queue=printing,default
 ```
+
+### Printer Configuration
+
+Each location's printers are configured in the database (`printer_settings`
+table), managed through `/api/printer-settings` (admin panel), **not**
+`.env` — connection type (`network` or `shared_windows`), host/port or
+`share_path`, ESC/POS profile, header text, and enabled flag are all
+per-location rows there, since a given institution can have multiple
+locations with different printers.
+
+The only printer-related settings that belong in `.env` are the SMB
+credentials shared by every `shared_windows` printer (a network/SMB print
+share — including a Samba-shared CUPS queue on Linux, not just a literal
+Windows print server):
+
+```env
+PRINTER_SMB_USERNAME=
+PRINTER_SMB_PASSWORD=
+PRINTER_SMB_WORKGROUP=
+```
+
+These get injected into the printer's `share_path` at print time
+(`App\Support\TicketPrinterConnector`) only if that path doesn't already
+embed its own credentials. Leave `PRINTER_SMB_WORKGROUP` empty unless the
+print server actually requires a domain/workgroup prefix on the username.
+
+The `TICKET_PRINTER_*` variables further down this file (`.env.example`)
+are unused legacy config — printing does not read them. Don't configure a
+printer there.
 
 ### Run on the Network / HTTPS
 

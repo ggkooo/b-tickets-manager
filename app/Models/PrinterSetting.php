@@ -56,7 +56,7 @@ class PrinterSetting extends Model
             'share_path' => $connectionType === self::CONNECTION_SHARED_WINDOWS
                 ? trim((string) ($validated['share_path'] ?? ''))
                 : null,
-            'profile' => trim((string) ($validated['profile'] ?? 'simple')),
+            'profile' => trim((string) ($validated['profile'] ?? 'default')),
             'header' => trim((string) ($validated['header'] ?? 'SENHA DE ATENDIMENTO')),
         ];
     }
