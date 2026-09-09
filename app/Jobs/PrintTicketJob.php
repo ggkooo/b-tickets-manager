@@ -159,7 +159,10 @@ class PrintTicketJob implements ShouldQueue
                 : ($printerConnection['host'] . ':' . $printerConnection['port']),
         ]);
 
-        $profileName = (string) ($printerConfig['profile'] ?? 'simple');
+        // 'simple' only advertises CP437, which lacks the nasal a/o accents used
+        // in words like "Solicitacao"/"Impressao", so those print as "?".
+        // 'default' advertises CP850/CP860/CP1252/etc, which cover Portuguese fully.
+        $profileName = (string) ($printerConfig['profile'] ?? 'default');
         $header = (string) ($printerConfig['header'] ?? 'SENHA DE ATENDIMENTO');
         $institution = User::institutionForLocation($ticket->location) ?? User::INSTITUTION_UNILAB;
         $institutionLabel = User::institutionDisplayName($institution);
