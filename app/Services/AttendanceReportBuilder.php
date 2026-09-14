@@ -39,8 +39,6 @@ class AttendanceReportBuilder
         $attendancesByUser = $this->buildAttendancesByUser($users, $attendancesByGuiche);
 
         $totalAttendances = $attendances->count();
-        $priorityAttendances = $attendances->where('service_type', ServiceCatalog::PRIORITY_SERVICE_TYPE)->count();
-        $otherAttendances = $totalAttendances - $priorityAttendances;
         $canceledAttendances = $attendances->where('completion_type', 'canceled')->count();
         $completedAttendances = $attendances->where('completion_type', 'completed')->count();
         $unknownOutcomeAttendances = $totalAttendances - $canceledAttendances - $completedAttendances;
@@ -64,10 +62,7 @@ class AttendanceReportBuilder
             ],
             'average_attendances_per_day' => $averageAttendancesPerDay,
             'attendances_per_day' => $this->buildAttendancesPerDay($attendances),
-            'attendances_by_type' => [
-                'priority' => $priorityAttendances,
-                'others' => $otherAttendances,
-            ],
+            'attendances_by_type' => $this->buildAttendancesByType($attendances, $location),
             'attendances_by_outcome' => [
                 'completed' => $completedAttendances,
                 'canceled' => $canceledAttendances,
@@ -77,6 +72,25 @@ class AttendanceReportBuilder
             'attendances_by_user' => $attendancesByUser,
             'total_attendances' => $totalAttendances,
         ];
+    }
+
+    private function buildAttendancesByType(Collection $attendances, string $location): array
+    {
+        $countsByType = $attendances->countBy('service_type');
+
+        $byType = [];
+
+        foreach (ServiceCatalog::allowedTypesForLocation($location) as $serviceType) {
+            $byType[$serviceType] = $countsByType->get($serviceType, 0);
+        }
+
+        foreach ($countsByType as $serviceType => $count) {
+            if (!array_key_exists($serviceType, $byType)) {
+                $byType[$serviceType] = $count;
+            }
+        }
+
+        return $byType;
     }
 
     private function buildAttendancesByGuiche(Collection $attendances): array
